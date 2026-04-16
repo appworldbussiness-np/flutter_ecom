@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ecom_/features/home/screens/edit_profile_screen.dart';
 import 'package:ecom_/features/products/models/product_model.dart';
@@ -11,8 +13,8 @@ import 'package:ecom_/providers/wishlist_provider.dart';
 import 'package:ecom_/services/cart_service.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -714,45 +716,142 @@ class SearchTab extends StatefulWidget {
   State<SearchTab> createState() => _SearchTabState();
 }
 
-class _SearchTabState extends State<SearchTab> {
+class _SearchTabState extends State<SearchTab>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
   String _query = '';
+  String _activeFilter = 'All';
+  List<String> _history = [];
 
-  // ── Search history ────────────────────────────────────────────────────────
-  final List<String> _history = [];
+  static const _maxHistory = 8;
+  static const _historyKey = 'search_history';
 
-  void _onSearch(String value) {
-    setState(() => _query = value);
-  }
+  final List<String> _filters = [
+    'All',
+    'Socks',
+    'Underpants',
+    'Innervest',
+    'Thermal',
+    'On Sale',
+    'In Stock',
+  ];
 
-  void _submitSearch(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return;
-    setState(() {
-      _history.remove(trimmed); // remove duplicate
-      _history.insert(0, trimmed); // add to top
-      if (_history.length > 8) _history.removeLast(); // max 8
-    });
-  }
+  final List<String> _trending = [
+    '🔥 merino wool',
+    '🔥 ankle socks',
+    '🔥 boxer briefs',
+    '🔥 thermal',
+    '🔥 innervest',
+    '🔥 3-pack',
+    '🔥 compression',
+  ];
 
-  void _deleteHistory(String item) {
-    setState(() => _history.remove(item));
-  }
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
 
-  void _clearAllHistory() {
-    setState(() => _history.clear());
-  }
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-  void _tapHistory(String item) {
-    _searchController.text = item;
-    setState(() => _query = item);
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
+    _animController.forward();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _focusNode.dispose();
+    _animController.dispose();
     super.dispose();
   }
+
+  // ── History persistence ────────────────────────────────────────────────────
+
+  Future<void> _loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_historyKey);
+    if (raw != null) {
+      setState(() {
+        _history = List<String>.from(jsonDecode(raw));
+      });
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_historyKey, jsonEncode(_history));
+  }
+
+  void _addHistory(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+    setState(() {
+      _history.remove(trimmed);
+      _history.insert(0, trimmed);
+      if (_history.length > _maxHistory) _history.removeLast();
+    });
+    _saveHistory();
+  }
+
+  void _deleteHistory(String item) {
+    setState(() => _history.remove(item));
+    _saveHistory();
+  }
+
+  void _clearAllHistory() {
+    setState(() => _history.clear());
+    _saveHistory();
+  }
+
+  void _tapHistory(String item) {
+    _searchController.text = item;
+    setState(() => _query = item);
+    _focusNode.unfocus();
+  }
+
+  // ── Search ─────────────────────────────────────────────────────────────────
+
+  void _onChanged(String value) {
+    setState(() => _query = value);
+    _animController
+      ..reset()
+      ..forward();
+  }
+
+  void _onSubmitted(String value) {
+    _addHistory(value);
+    _focusNode.unfocus();
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _query = '');
+    _focusNode.requestFocus();
+  }
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+
+  bool _matchesFilter(dynamic product) {
+    switch (_activeFilter) {
+      case 'On Sale':
+        return product.discountPrice != null;
+      case 'In Stock':
+        return product.isInStock;
+      case 'All':
+        return true;
+      default:
+        return product.category.toLowerCase() == _activeFilter.toLowerCase();
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -760,392 +859,456 @@ class _SearchTabState extends State<SearchTab> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-
-    final bool isSearching = _query.trim().isNotEmpty;
+    final isSearching = _query.trim().isNotEmpty;
 
     final results = isSearching
-        ? provider.products
-              .where(
-                (p) =>
-                    p.name.toLowerCase().contains(_query.toLowerCase()) ||
-                    p.category.toLowerCase().contains(_query.toLowerCase()) ||
-                    p.description.toLowerCase().contains(_query.toLowerCase()),
-              )
-              .toList()
-        : [];
+        ? provider.products.where((p) {
+            final ql = _query.toLowerCase();
+            final matchQuery =
+                p.name.toLowerCase().contains(ql) ||
+                p.category.toLowerCase().contains(ql) ||
+                p.description.toLowerCase().contains(ql);
+            return matchQuery && _matchesFilter(p);
+          }).toList()
+        : <dynamic>[];
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        centerTitle: true,
-        backgroundColor: cs.primary,
-        elevation: 0,
-        title: const Text(
-          'Search',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-            color: Colors.white,
-          ),
+      backgroundColor: isDark
+          ? const Color(0xFF0F0F14)
+          : const Color(0xFFF7F7FA),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Header ──────────────────────────────────────────────────────
+            _buildHeader(cs, isDark),
+
+            // ── Filter chips (only when searching) ──────────────────────────
+            if (isSearching) _buildFilterRow(cs, isDark),
+
+            // ── Body ────────────────────────────────────────────────────────
+            Expanded(
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: isSearching
+                    ? _buildResults(results, cs, isDark)
+                    : _buildHomeState(cs, isDark),
+              ),
+            ),
+          ],
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Search field ────────────────────────────────────────
-            Container(
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.black.withOpacity(0.3)
-                        : Colors.black.withOpacity(0.06),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+    );
+  }
+
+  // ── Header (AppBar + search field) ────────────────────────────────────────
+
+  Widget _buildHeader(ColorScheme cs, bool isDark) {
+    return Container(
+      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title row
+          Row(
+            children: [
+              Text(
+                'Search',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                  color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                ),
               ),
-              child: TextField(
-                controller: _searchController,
-                style: TextStyle(color: cs.onSurface),
-                onChanged: _onSearch,
-                onSubmitted: _submitSearch,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Search socks, underpants, innervest...',
-                  hintStyle: TextStyle(
-                    color: cs.onSurface.withOpacity(0.4),
-                    fontSize: 14,
+              const Spacer(),
+              if (_query.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    _searchController.clear();
+                    setState(() {
+                      _query = '';
+                      _activeFilter = 'All';
+                    });
+                  },
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
                   ),
-                  prefixIcon: Icon(
-                    Icons.search,
-                    color: cs.onSurface.withOpacity(0.4),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Search field
+          Container(
+            height: 46,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF2A2A3E) : const Color(0xFFF0F0F5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: _focusNode.hasFocus
+                    ? cs.primary.withOpacity(0.5)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 12),
+                Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: isDark ? Colors.white38 : const Color(0xFFAAAAAA),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _focusNode,
+                    onChanged: _onChanged,
+                    onSubmitted: _onSubmitted,
+                    textInputAction: TextInputAction.search,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Socks, underpants, innervest…',
+                      hintStyle: TextStyle(
+                        fontSize: 14,
+                        color: isDark
+                            ? Colors.white30
+                            : const Color(0xFFBBBBBB),
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
                   ),
-                  suffixIcon: _query.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(
-                            Icons.clear,
-                            color: cs.onSurface.withOpacity(0.4),
-                          ),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _query = '');
-                          },
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
+                ),
+                if (_query.isNotEmpty)
+                  GestureDetector(
+                    onTap: _clearSearch,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white24
+                            : const Color(0xFFCCCCCC),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 12,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Filter chips ───────────────────────────────────────────────────────────
+
+  Widget _buildFilterRow(ColorScheme cs, bool isDark) {
+    return Container(
+      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SizedBox(
+        height: 34,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: _filters.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (_, i) {
+            final f = _filters[i];
+            final active = _activeFilter == f;
+            return GestureDetector(
+              onTap: () => setState(() => _activeFilter = f),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: active
+                      ? const Color(0xFF1A1A2E)
+                      : (isDark
+                            ? const Color(0xFF2A2A3E)
+                            : const Color(0xFFF0F0F5)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: active
+                        ? const Color(0xFF1A1A2E)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Text(
+                  f,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: active
+                        ? Colors.white
+                        : (isDark ? Colors.white60 : const Color(0xFF666666)),
                   ),
                 ),
               ),
-            ),
+            );
+          },
+        ),
+      ),
+    );
+  }
 
-            const SizedBox(height: 20),
+  // ── Home state (history + trending) ───────────────────────────────────────
 
-            // ── NOT searching → show history ────────────────────────
-            if (!isSearching) ...[
-              if (_history.isEmpty)
-                Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_rounded,
-                          size: 72,
-                          color: cs.onSurface.withOpacity(0.15),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Search for products',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(0.4),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Socks, underpants, innervest and more',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: cs.onSurface.withOpacity(0.3),
-                          ),
-                        ),
-                      ],
-                    ),
+  Widget _buildHomeState(ColorScheme cs, bool isDark) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Recent searches
+        if (_history.isNotEmpty) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _sectionLabel('Recent searches', isDark),
+              GestureDetector(
+                onTap: _clearAllHistory,
+                child: const Text(
+                  'Clear all',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFE94560),
                   ),
-                )
-              else ...[
-                // History header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...List.generate(_history.length, (i) {
+            final item = _history[i];
+            return _HistoryTile(
+              item: item,
+              isDark: isDark,
+              onTap: () => _tapHistory(item),
+              onDelete: () => _deleteHistory(item),
+            );
+          }),
+          const SizedBox(height: 24),
+        ],
+
+        // Trending
+        _sectionLabel('Trending now', isDark),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _trending.map((t) {
+            final label = t.replaceFirst('🔥 ', '');
+            return GestureDetector(
+              onTap: () => _tapHistory(label),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF2A2A3E)
+                      : const Color(0xFFF0F0F5),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.transparent),
+                ),
+                child: Text(
+                  t,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white70 : const Color(0xFF555555),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  // ── Results ────────────────────────────────────────────────────────────────
+
+  Widget _buildResults(List results, ColorScheme cs, bool isDark) {
+    if (results.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off_rounded,
+              size: 64,
+              color: isDark ? Colors.white12 : Colors.black12,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No results for "$_query"',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Try different keywords or filters',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white24 : Colors.black26,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Results header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
                   children: [
-                    Text(
-                      'Recent Searches',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
-                      ),
+                    TextSpan(
+                      text:
+                          '${results.length} result${results.length == 1 ? '' : 's'} for ',
                     ),
-                    GestureDetector(
-                      onTap: _clearAllHistory,
-                      child: Text(
-                        'Clear all',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: cs.secondary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    TextSpan(
+                      text: '"$_query"',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white60 : Colors.black54,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                // History list
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: _history.length,
-                    separatorBuilder: (_, __) => Divider(
-                      height: 1,
-                      color: cs.onSurface.withOpacity(0.08),
-                    ),
-                    itemBuilder: (_, index) {
-                      final item = _history[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          Icons.history_rounded,
-                          color: cs.onSurface.withOpacity(0.4),
-                          size: 20,
-                        ),
-                        title: Text(
-                          item,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: cs.onSurface,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        trailing: IconButton(
-                          icon: Icon(
-                            Icons.close,
-                            size: 16,
-                            color: cs.onSurface.withOpacity(0.4),
-                          ),
-                          onPressed: () => _deleteHistory(item),
-                        ),
-                        onTap: () => _tapHistory(item),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
+              const Spacer(),
+              _SortButton(isDark: isDark),
             ],
+          ),
+        ),
 
-            // ── IS searching → show results ─────────────────────────
-            if (isSearching) ...[
-              Text(
-                results.isEmpty
-                    ? 'No results for "$_query"'
-                    : '${results.length} result${results.length == 1 ? '' : 's'} for "$_query"',
+        // List
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            itemCount: results.length,
+            itemBuilder: (_, i) {
+              final p = results[i];
+              return _ProductCard(
+                product: p,
+                // isDark: isDark,
+                // cs: cs,
+                // onTap: () => _addHistory(_query),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionLabel(String text, bool isDark) => Text(
+    text.toUpperCase(),
+    style: TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.8,
+      color: isDark ? Colors.white38 : Colors.black38,
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Sub-widgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HistoryTile extends StatelessWidget {
+  const _HistoryTile({
+    required this.item,
+    required this.isDark,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final String item;
+  final bool isDark;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF2A2A3E)
+                    : const Color(0xFFF0F0F5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.history_rounded,
+                size: 16,
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                item,
                 style: TextStyle(
-                  color: cs.onSurface.withOpacity(0.5),
-                  fontSize: 13,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : const Color(0xFF1A1A2E),
                 ),
               ),
-              const SizedBox(height: 12),
-
-              Expanded(
-                child: results.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search_off_rounded,
-                              size: 64,
-                              color: cs.onSurface.withOpacity(0.2),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No results for "$_query"',
-                              style: TextStyle(
-                                color: cs.onSurface.withOpacity(0.5),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: results.length,
-                        itemBuilder: (_, index) {
-                          final product = results[index];
-                          final imageUrl = product.images.isNotEmpty
-                              ? product.images[0]
-                              : '';
-
-                          return GestureDetector(
-                            onTap: () => _submitSearch(_query),
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              decoration: BoxDecoration(
-                                color: cs.surface,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isDark
-                                        ? Colors.black.withOpacity(0.3)
-                                        : Colors.black.withOpacity(0.05),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.all(10),
-
-                                // Thumbnail
-                                leading: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: SizedBox(
-                                    width: 58,
-                                    height: 58,
-                                    child: imageUrl.isNotEmpty
-                                        ? Image.network(
-                                            imageUrl,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                Container(
-                                                  color: cs.onSurface
-                                                      .withOpacity(0.08),
-                                                  child: Icon(
-                                                    Icons.image_outlined,
-                                                    color: cs.onSurface
-                                                        .withOpacity(0.4),
-                                                  ),
-                                                ),
-                                          )
-                                        : Container(
-                                            color: cs.onSurface.withOpacity(
-                                              0.08,
-                                            ),
-                                            child: Icon(
-                                              Icons.image_outlined,
-                                              color: cs.onSurface.withOpacity(
-                                                0.4,
-                                              ),
-                                            ),
-                                          ),
-                                  ),
-                                ),
-
-                                // Name + category
-                                title: Text(
-                                  product.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: cs.onSurface,
-                                  ),
-                                ),
-                                subtitle: Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: cs.onSurface.withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          product.category,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: cs.onSurface.withOpacity(
-                                              0.6,
-                                            ),
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                      if (!product.isInStock) ...[
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: cs.error.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            'Out of stock',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: cs.error,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-
-                                // Price
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      'NPR ${product.finalPrice.toStringAsFixed(0)}',
-                                      style: TextStyle(
-                                        color: cs.secondary,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-                                    if (product.discountPrice != null)
-                                      Text(
-                                        'NPR ${product.price.toStringAsFixed(0)}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: cs.onSurface.withOpacity(0.4),
-                                          decoration:
-                                              TextDecoration.lineThrough,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+            ),
+            GestureDetector(
+              onTap: onDelete,
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: isDark ? Colors.white24 : Colors.black26,
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -1153,6 +1316,41 @@ class _SearchTabState extends State<SearchTab> {
   }
 }
 
+class _SortButton extends StatelessWidget {
+  const _SortButton({required this.isDark});
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      border: Border.all(
+        color: isDark ? const Color(0xFF3A3A50) : const Color(0xFFE0E0E8),
+        width: 1.5,
+      ),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Sort',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white54 : const Color(0xFF888888),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 16,
+          color: isDark ? Colors.white38 : const Color(0xFFAAAAAA),
+        ),
+      ],
+    ),
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // CART TAB
 // ─────────────────────────────────────────────────────────────────────────────
