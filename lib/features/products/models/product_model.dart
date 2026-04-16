@@ -131,4 +131,29 @@ class Product {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  factory Product.fromMap(Map<String, dynamic> data, String id) {
+    return Product(
+      id: id,
+      name: data['name'] ?? '',
+      price: (data['price'] ?? 0).toDouble(),
+
+      /// 🔥 IMPORTANT FIX
+      images: data['images'] != null
+          ? List<String>.from(data['images'])
+          : [data['image'] ?? ''],
+
+      description: data['description'] ?? '',
+      category: data['category'] ?? '',
+      sizes: List<String>.from(data['sizes'] ?? []),
+      colors: List<String>.from(data['colors'] ?? []),
+
+      /// 🔥 THIS FIXES "OUT OF STOCK BUG"
+      isInStock: (data['stock'] ?? 0) > 0,
+
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
+    );
+  }
 }

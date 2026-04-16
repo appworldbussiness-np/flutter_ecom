@@ -1,6 +1,7 @@
 import 'package:ecom_/features/auth/screens/forgetpassword_screen.dart';
 import 'package:ecom_/features/auth/screens/splash_screen.dart';
 import 'package:ecom_/firebase_options.dart';
+import 'package:ecom_/providers/admin_product_provider.dart';
 import 'package:ecom_/providers/app_product_provider.dart';
 import 'package:ecom_/providers/cart_provider.dart';
 import 'package:ecom_/providers/profile_provider.dart';
@@ -31,6 +32,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => StorageProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()..loadUser()),
+        ChangeNotifierProvider(create: (context) => AdminProductProvider()),
         ChangeNotifierProvider(create: (_) => WishlistProvider()),
       ],
       child: const MyApp(),
