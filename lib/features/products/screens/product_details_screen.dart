@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ecom_/core/theme/app_theme.dart';
 import 'package:ecom_/providers/wishlist_provider.dart';
 import 'package:flutter/material.dart';
@@ -8,8 +9,15 @@ import '../../../services/cart_service.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final Product product;
+  final String? initialSize;
+  final String? initialColor;
 
-  const ProductDetailsScreen({super.key, required this.product});
+  const ProductDetailsScreen({
+    super.key,
+    required this.product,
+    this.initialSize,
+    this.initialColor,
+  });
 
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
@@ -77,10 +85,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       ? SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent)
       : SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent);
 
+  //
   // ══════════════════════════════════════════════════════════════════════════
+
   @override
   void initState() {
     super.initState();
+
+    /// ✅ SET PRE-SELECTED VALUES
+    selectedSize = widget.initialSize;
+    selectedColor = widget.initialColor;
 
     _fadeController = AnimationController(
       vsync: this,
@@ -400,8 +414,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
             const SizedBox(height: 20),
 
             _descriptionSection(p),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
             _featureChips(),
+            const SizedBox(height: 30),
+            _suggestedProducts(),
+
             const SizedBox(height: 100),
           ],
         ),
@@ -717,6 +734,116 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _suggestedProducts() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('products')
+          .limit(6)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox();
+
+        final products = snapshot.data!.docs;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                "You may also like",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            SizedBox(
+              height: 180,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: products.length,
+                itemBuilder: (_, i) {
+                  final data = products[i].data() as Map<String, dynamic>;
+
+                  return Container(
+                    width: 140,
+                    margin: const EdgeInsets.only(left: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        /// IMAGE
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            data['images'][0],
+                            height: 80,
+                            width: 140,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        Text(
+                          data['name'],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+
+                        Text(
+                          "NPR ${data['price']}",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+
+                        const SizedBox(height: 4),
+
+                        /// QUICK ADD BUTTON
+                        GestureDetector(
+                          onTap: () async {
+                            await CartService.addToCart(
+                              Product.fromMap(data, products[i].id),
+                            );
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  "Added to cart",
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                margin: const EdgeInsets.all(12),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              "Add to cart",
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

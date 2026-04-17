@@ -490,6 +490,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   // 🚀 LOGIC UNCHANGED (same as yours)
+  // 🔹 ONLY IMPORTANT PART SHOWN (UPDATED _placeOrder)
+
   void _placeOrder() async {
     AddressStore.save(
       name: nameCtrl.text,
@@ -502,13 +504,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     setState(() => isLoading = true);
 
+    /// ✅ 🔥 FIX: FORCE CLEAN + CONSISTENT DATA
+    final enrichedItems = widget.items.map((item) {
+      final size =
+          item["size"] ??
+          item["selectedSize"] ??
+          item["variant"]?["size"] ??
+          "";
+
+      final color =
+          item["color"] ??
+          item["selectedColor"] ??
+          item["variant"]?["color"] ??
+          "";
+
+      final colorHex =
+          item["colorHex"] ??
+          item["selectedColorHex"] ??
+          item["variant"]?["colorHex"] ??
+          "";
+
+      return {
+        ...item,
+
+        /// ✅ ALWAYS SAVE THESE KEYS
+        "size": size.toString(),
+        "color": color.toString(),
+        "colorHex": colorHex.toString(),
+      };
+    }).toList();
+
+    /// 🔍 DEBUG PRINT (VERY IMPORTANT)
+    for (var i in enrichedItems) {
+      print("🧾 ITEM => ${i['name']}");
+      print("   size: ${i['size']}");
+      print("   color: ${i['color']}");
+      print("   hex: ${i['colorHex']}");
+    }
+
     try {
       /// =========================
       /// COD ORDER
       /// =========================
       if (selectedPayment == "cod") {
         await OrderService.placeOrder(
-          widget.items,
+          enrichedItems, // ✅ FIXED
           finalTotal,
           {
             'name': nameCtrl.text,
@@ -520,8 +560,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           isPaid: false,
         );
 
-        /// ✅ STOCK DEDUCT
-        await _deductStock(widget.items);
+        await _deductStock(enrichedItems);
 
         _success();
         return;
@@ -551,7 +590,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
 
           await OrderService.placeOrder(
-            widget.items,
+            enrichedItems, // ✅ FIXED
             finalTotal,
             {
               'name': nameCtrl.text,
@@ -563,8 +602,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             isPaid: true,
           );
 
-          /// ✅ STOCK DEDUCT AFTER SUCCESS
-          await _deductStock(widget.items);
+          await _deductStock(enrichedItems);
 
           _success();
         },

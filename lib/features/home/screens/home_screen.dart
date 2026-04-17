@@ -37,6 +37,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: [SystemUiOverlay.top],
+    );
+
     return Scaffold(
       body: screens[currentIndex],
       bottomNavigationBar: SafeArea(
@@ -66,20 +71,23 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             unselectedLabelStyle: const TextStyle(fontSize: 11),
             onTap: (index) => setState(() => currentIndex = index),
-            items: const [
-              BottomNavigationBarItem(
+            items: [
+              const BottomNavigationBarItem(
                 icon: Icon(Icons.home_outlined),
                 activeIcon: Icon(Icons.home_rounded),
                 label: 'Home',
               ),
-              BottomNavigationBarItem(
+              const BottomNavigationBarItem(
                 icon: Icon(Icons.search_outlined),
                 activeIcon: Icon(Icons.search_rounded),
                 label: 'Search',
               ),
-              BottomNavigationBarItem(icon: CartBadgeIcon(), label: "Cart"),
-
               BottomNavigationBarItem(
+                icon: cartIconWithBadge(context),
+                label: "Cart",
+              ),
+
+              const BottomNavigationBarItem(
                 icon: Icon(Icons.settings_outlined),
                 activeIcon: Icon(Icons.settings_rounded),
                 label: 'Settings',
@@ -92,71 +100,76 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class CartBadgeIcon extends StatelessWidget {
-  const CartBadgeIcon({super.key});
+Widget cartIconWithBadge(BuildContext context) {
+  final user = FirebaseAuth.instance.currentUser;
 
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+  /// If user not logged in
+  if (user == null) {
+    return const Icon(Icons.shopping_cart);
+  }
 
-    if (user == null || user.email == null) {
-      return const Icon(Icons.shopping_cart_outlined);
-    }
-
-    final email = CartService.safeEmail(user.email!);
-
-    final cartRef = FirebaseFirestore.instance
+  return StreamBuilder<QuerySnapshot>(
+    stream: FirebaseFirestore.instance
         .collection('users')
-        .doc(email)
-        .collection('cart');
+        .doc(user.uid) // ✅ MUST be UID
+        .collection('cart')
+        .snapshots(),
+    builder: (context, snapshot) {
+      int count = 0;
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: cartRef.snapshots(),
-      builder: (context, snapshot) {
-        int count = 0;
+      /// ✅ SAFE DATA HANDLING
+      if (snapshot.hasData && snapshot.data != null) {
+        for (final doc in snapshot.data!.docs) {
+          final rawData = doc.data();
 
-        if (snapshot.hasData) {
-          for (var doc in snapshot.data!.docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            count += (data['quantity'] ?? 1) as int;
+          /// 🔥 VERY IMPORTANT: check type safely
+          if (rawData is! Map<String, dynamic>) continue;
+
+          final qty = rawData['quantity'];
+
+          /// ✅ HANDLE ALL CASES (int, string, null)
+          if (qty is int) {
+            count += qty;
+          } else if (qty is String) {
+            count += int.tryParse(qty) ?? 1;
+          } else {
+            count += 1;
           }
         }
+      }
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            const Icon(Icons.shopping_cart_outlined),
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.shopping_cart, size: 26),
 
-            if (count > 0)
-              Positioned(
-                right: -6,
-                top: -6,
-                child: Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                  ),
-                  child: Text(
-                    count > 99 ? '99+' : '$count',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+          /// 🔥 BADGE
+          if (count > 0)
+            Positioned(
+              right: -6,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  count > 99 ? "99+" : "$count",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-          ],
-        );
-      },
-    );
-  }
+            ),
+        ],
+      );
+    },
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,6 +209,10 @@ class _HomeTabState extends State<HomeTab> {
 
   @override
   Widget build(BuildContext context) {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: [SystemUiOverlay.top],
+    );
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     // final isDark = theme.brightness == Brightness.dark;
@@ -475,7 +492,13 @@ class _ProductCardState extends State<_ProductCard> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsScreen(product: product),
+            builder: (_) => ProductDetailsScreen(
+              product: product,
+              initialSize: product.sizes.isNotEmpty ? product.sizes[0] : null,
+              initialColor: product.colors.isNotEmpty
+                  ? product.colors[0]
+                  : null,
+            ),
           ),
         );
       },
@@ -631,6 +654,13 @@ class _ProductCardState extends State<_ProductCard> {
                                       MaterialPageRoute(
                                         builder: (_) => ProductDetailsScreen(
                                           product: product,
+                                          initialSize: product.sizes.isNotEmpty
+                                              ? product.sizes[0]
+                                              : null,
+                                          initialColor:
+                                              product.colors.isNotEmpty
+                                              ? product.colors[0]
+                                              : null,
                                         ),
                                       ),
                                     );
@@ -847,7 +877,13 @@ class _SearchTabState extends State<SearchTab> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsScreen(product: product),
+            builder: (_) => ProductDetailsScreen(
+              initialColor: product.colors.isNotEmpty
+                  ? product.colors[0]
+                  : null,
+              product: product,
+              initialSize: product.sizes.isNotEmpty ? product.sizes[0] : null,
+            ),
           ),
         );
       },
@@ -910,37 +946,35 @@ class _SearchTabState extends State<SearchTab> {
 // ─────────────────────────────────────────────────────────────────────────────
 // CART TAB
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 class CartTab extends StatelessWidget {
-  const CartTab({super.key});
+  const CartTab({super.key, this.initialSize, this.initialColor});
 
+  /// ✅ FIXED: USE UID (NOT EMAIL)
   CollectionReference getCartRef() {
     final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null || user.email == null) {
+    if (user == null) {
       throw Exception("User not logged in");
     }
 
-    final email = CartService.safeEmail(user.email!);
-
     return FirebaseFirestore.instance
         .collection('users')
-        .doc(email)
+        .doc(user.uid) // 🔥 FIXED HERE
         .collection('cart');
   }
 
+  final String? initialSize;
+  final String? initialColor;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
         title: const Text(
-          'My cart',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-            color: Colors.white,
-          ),
+          'My Cart',
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -959,15 +993,13 @@ class CartTab extends StatelessWidget {
           return Column(
             children: [
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: items.length,
-                  itemBuilder: (_, i) {
-                    final doc = items[i];
-                    final data = doc.data() as Map<String, dynamic>;
-
-                    return _cartItemCard(context, doc.id, data);
-                  },
+                child: ListView(
+                  children: [
+                    ...items.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return _cartItemCard(context, doc.id, data);
+                    }),
+                  ],
                 ),
               ),
               _checkoutSection(context, items),
@@ -978,135 +1010,115 @@ class CartTab extends StatelessWidget {
     );
   }
 
-  /// 🧾 CART ITEM (UI SAME, FIXED LOGIC)
+  /// 🧾 CART ITEM CARD
   Widget _cartItemCard(
     BuildContext context,
     String id,
     Map<String, dynamic> data,
   ) {
-    final cs = Theme.of(context).colorScheme;
-
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
+
+      /// ✅ TAP → GO TO PRODUCT DETAILS
       onTap: () {
-        final productId = data['productId'];
-
-        if (productId == null) return;
-
-        /// ✅ FIX: pass correct productId via Product object
         final product = Product(
-          id: productId, // 🔥 FIXED
+          id: data['productId'],
           name: data['name'] ?? '',
           price: (data['price'] ?? 0).toDouble(),
           images: [data['image'] ?? ''],
-          description: data['description'] ?? 'No description available',
-          sizes: List<String>.from(data['sizes'] ?? []),
-          colors: List<String>.from(data['colors'] ?? []),
-          isInStock: data['isInStock'] ?? true,
-          category: data['category'] ?? 'general',
-          createdAt: data['createdAt'] is Timestamp
-              ? (data['createdAt'] as Timestamp).toDate()
-              : DateTime.now(),
+          description: data['description'] ?? '',
+          sizes: [], // optional
+          colors: [], // optional
+          isInStock: true,
+          category: 'general',
+          createdAt: DateTime.now(),
         );
 
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsScreen(product: product),
+            builder: (_) => ProductDetailsScreen(
+              product: product,
+
+              /// ✅ PASS SELECTED VALUES
+              initialSize: data['size'],
+              initialColor: data['color'],
+            ),
           ),
         );
       },
+
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [
             /// IMAGE
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               child: Image.network(
                 data['image'] ?? '',
-                width: 80,
-                height: 80,
+                width: 70,
+                height: 70,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  color: cs.surfaceVariant,
-                  width: 80,
-                  height: 80,
-                  child: const Icon(Icons.image),
-                ),
               ),
             ),
 
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
 
-            /// INFO
+            /// DETAILS
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     data['name'] ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-
-                  Text(
-                    "NPR ${(data['price'] ?? 0)}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 4),
+
+                  Text("NPR ${data['price']}"),
+
+                  /// ✅ SIZE
+                  if (data['size'] != null && data['size'] != "default")
+                    Text("Size: ${data['size']}"),
+
+                  /// ✅ COLOR
+                  if (data['color'] != null && data['color'] != "default")
+                    Text("Color: ${data['color']}"),
+
+                  const SizedBox(height: 8),
 
                   /// QUANTITY
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(30),
-                      color: cs.surfaceVariant,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _qtyBtn(Icons.remove, () => _updateQty(id, data, -1)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: Text(
-                            "${data['quantity'] ?? 1}",
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        _qtyBtn(Icons.add, () => _updateQty(id, data, 1)),
-                      ],
-                    ),
+                  Row(
+                    children: [
+                      _qtyBtn(() => _updateQty(id, data, -1), Icons.remove),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text("${data['quantity']}"),
+                      ),
+                      _qtyBtn(() => _updateQty(id, data, 1), Icons.add),
+                    ],
                   ),
                 ],
               ),
             ),
 
-            /// DELETE
-            IconButton(
-              onPressed: () => _deleteItem(id),
-              icon: Icon(Icons.close, color: cs.error),
+            /// ❌ REMOVE BUTTON
+            GestureDetector(
+              onTap: () => _deleteItem(id),
+              child: const Text(
+                "Remove",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
@@ -1114,10 +1126,9 @@ class CartTab extends StatelessWidget {
     );
   }
 
-  Widget _qtyBtn(IconData icon, VoidCallback onTap) {
+  Widget _qtyBtn(VoidCallback onTap, IconData icon) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(50),
       child: Padding(
         padding: const EdgeInsets.all(6),
         child: Icon(icon, size: 18),
@@ -1125,14 +1136,12 @@ class CartTab extends StatelessWidget {
     );
   }
 
-  /// 💰 CHECKOUT (FIXED productId)
+  /// 💰 CHECKOUT SECTION
   Widget _checkoutSection(
     BuildContext context,
     List<QueryDocumentSnapshot> items,
   ) {
-    final cs = Theme.of(context).colorScheme;
-
-    double subtotal = 0;
+    double total = 0;
     int totalItems = 0;
 
     for (var item in items) {
@@ -1140,111 +1149,66 @@ class CartTab extends StatelessWidget {
       final price = (data['price'] ?? 0).toDouble();
       final qty = (data['quantity'] ?? 1) as int;
 
-      subtotal += price * qty;
+      total += price * qty;
       totalItems += qty;
     }
 
-    double deliveryFee = subtotal > 1000 ? 0 : 100;
-    double discount = subtotal > 2000 ? 100 : 0;
-    double total = subtotal + deliveryFee - discount;
-
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Items ($totalItems)"),
-                Text("NPR ${subtotal.toStringAsFixed(0)}"),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Delivery Fee"),
-                Text(deliveryFee == 0 ? "Free" : "NPR $deliveryFee"),
-              ],
-            ),
-
-            const Divider(),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Total"),
-                Text(
-                  "NPR ${total.toStringAsFixed(0)}",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: () {
-                  final checkoutItems = items.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return {
-                      'productId': data['productId'], // 🔥 FIXED
-                      'name': data['name'],
-                      'price': data['price'],
-                      'quantity': data['quantity'],
-                      'image': data['image'],
-                    };
-                  }).toList();
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          CheckoutScreen(items: checkoutItems, total: total),
-                    ),
-                  );
-                },
-                child: Text("Checkout ($totalItems items)"),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// EMPTY
-  Widget _emptyState(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Center(
+      padding: const EdgeInsets.all(16),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.shopping_cart_outlined,
-            size: 80,
-            color: cs.onSurface.withOpacity(0.3),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("Total ($totalItems items)"),
+              Text("NPR ${total.toStringAsFixed(0)}"),
+            ],
           ),
-          const SizedBox(height: 16),
-          const Text("Your cart is empty"),
+
+          const SizedBox(height: 12),
+
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () {
+                /// ✅ FIXED: INCLUDE SIZE & COLOR
+                final checkoutItems = items.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+
+                  return {
+                    'productId': data['productId'],
+                    'name': data['name'],
+                    'price': data['price'],
+                    'quantity': data['quantity'],
+                    'image': data['image'],
+                    'size': data['size'], // 🔥 FIX
+                    'color': data['color'], // 🔥 FIX
+                  };
+                }).toList();
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        CheckoutScreen(items: checkoutItems, total: total),
+                  ),
+                );
+              },
+              child: const Text("Checkout"),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  /// UPDATE QTY
+  /// ❌ EMPTY STATE
+  Widget _emptyState(BuildContext context) {
+    return const Center(child: Text("Your cart is empty"));
+  }
+
+  /// 🔄 UPDATE QTY
   void _updateQty(String id, Map<String, dynamic> data, int change) async {
     final int currentQty = (data['quantity'] ?? 1) as int;
     final int newQty = currentQty + change;
@@ -1256,7 +1220,7 @@ class CartTab extends StatelessWidget {
     }
   }
 
-  /// DELETE
+  /// 🗑 DELETE ITEM
   void _deleteItem(String id) async {
     await getCartRef().doc(id).delete();
   }
@@ -1369,37 +1333,40 @@ class SettingsTab extends StatelessWidget {
                 Selector<NotificationProvider, bool>(
                   selector: (_, provider) => provider.isEnabled,
                   builder: (context, isEnabled, _) {
-                    return _settingsTile(
-                      context: context,
-                      icon: Icons.notifications,
-                      iconColor: Colors.green,
-                      title: 'Notifications',
-                      subtitle: 'Push notifications settings',
-                      trailing: Switch(
-                        value: isEnabled,
-                        onChanged: (value) async {
-                          context.read<NotificationProvider>().setEnabled(
-                            value, // Change color depending on dark/light mode
+                    return Selector<StorageProvider, bool>(
+                      selector: (_, provider) => provider.isDarktheme,
+                      builder: (context, isDark, __) {
+                        final theme = Theme.of(context);
+                        final colorScheme = theme.colorScheme;
+
+                        return _settingsTile(
+                          context: context,
+                          icon: Icons.notifications,
+                          iconColor: Colors.green,
+                          title: 'Notifications',
+                          subtitle: 'Push notifications settings',
+                          trailing: Switch(
+                            value: isEnabled,
                             activeColor: isDark
                                 ? colorScheme.secondary
                                 : colorScheme.primary,
-                            // inactiveThumbColor: colorScheme.onSurface
-                            //.withOpacity(0.5),
-                          );
+                            onChanged: (value) async {
+                              context.read<NotificationProvider>().setEnabled(
+                                value,
+                                activeColor: colorScheme.onSurface,
+                              );
 
-                          if (value) {
-                            // ✅ ENABLE
-                            await FirebaseMessaging.instance
-                                .requestPermission();
-                            await FirebaseMessaging.instance.subscribeToTopic(
-                              "all",
-                            );
-
-                            // ✅ SHOW SNACKBAR
-                            showNotificationSnackBar(context, value);
-                          }
-                        },
-                      ),
+                              if (value) {
+                                await FirebaseMessaging.instance
+                                    .requestPermission();
+                                await FirebaseMessaging.instance
+                                    .subscribeToTopic("all");
+                                showNotificationSnackBar(context, value);
+                              }
+                            },
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

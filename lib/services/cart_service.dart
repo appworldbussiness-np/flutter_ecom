@@ -26,28 +26,56 @@ class CartService {
     String? size,
     String? color,
   }) async {
-    final ref = cartRef();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    final String docId = product.id;
+    final cartRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('cart');
 
-    final doc = await ref.doc(docId).get();
+    final safeSize = (size != null && size.isNotEmpty) ? size : "default";
+    final safeColor = (color != null && color.isNotEmpty) ? color : "default";
 
-    if (doc.exists) {
-      final existing = doc.data() as Map<String, dynamic>;
-      final int currentQty = (existing['quantity'] as num?)?.toInt() ?? 1;
+    final productId = product.id;
 
-      await ref.doc(docId).update({'quantity': currentQty + quantity});
-    } else {
-      await ref.doc(docId).set({
-        'productId': product.id, // ✅ MUST NEVER BE NULL
-        'name': product.name,
-        'price': product.finalPrice,
-        'image': product.images.isNotEmpty ? product.images[0] : '',
-        'quantity': quantity,
-        'size': size ?? '',
-        'color': color ?? '',
-        'addedAt': FieldValue.serverTimestamp(),
-      });
+    if (productId.isEmpty) {
+      print("❌ PRODUCT ID NULL");
+      return;
+    }
+
+    /// 🔥 CLEAN FUNCTION
+    String clean(String value) {
+      return value.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    }
+
+    final docId = "${productId}_${clean(safeSize)}_${clean(safeColor)}";
+
+    final docRef = cartRef.doc(docId);
+
+    print("🛒 docId: $docId");
+
+    try {
+      final doc = await docRef.get();
+
+      if (doc.exists) {
+        final currentQty = (doc['quantity'] ?? 1) as int;
+
+        await docRef.update({'quantity': currentQty + quantity});
+      } else {
+        await docRef.set({
+          'productId': productId,
+          'name': product.name,
+          'price': (product.price as num).toDouble(),
+          'quantity': quantity,
+          'image': product.images.isNotEmpty ? product.images.first : '',
+          'size': safeSize,
+          'color': safeColor,
+          'addedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      print("🔥 ERROR: $e");
     }
   }
 

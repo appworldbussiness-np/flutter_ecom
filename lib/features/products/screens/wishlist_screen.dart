@@ -89,7 +89,13 @@ class _WishlistTile extends StatelessWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ProductDetailsScreen(product: product),
+              builder: (_) => ProductDetailsScreen(
+                product: product,
+                initialSize: product.sizes.isNotEmpty ? product.sizes[0] : null,
+                initialColor: product.colors.isNotEmpty
+                    ? product.colors[0]
+                    : null,
+              ),
             ),
           );
         },

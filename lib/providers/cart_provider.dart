@@ -17,52 +17,31 @@ class CartProvider extends ChangeNotifier {
   CollectionReference get _cartRef =>
       _db.collection('users').doc(userId).collection('cart');
 
-  // 🔥 LISTEN CART
+  /// 🔥 LISTEN CART (NO FILTER)
   void listenCart() {
     _cartRef.orderBy('addedAt', descending: true).snapshots().listen((
       snapshot,
     ) {
       cart = snapshot.docs.map((e) => CartItem.fromFirestore(e)).toList();
+
+      print("🛒 CART ITEMS: ${cart.length}");
+
       isLoading = false;
       notifyListeners();
     });
   }
 
-  // ➕ ADD TO CART (FIXED)
-  Future<void> addToCart(CartItem item) async {
-    final docRef = _cartRef.doc(item.productId); // 🔥 IMPORTANT
-
-    final doc = await docRef.get();
-
-    if (doc.exists) {
-      // ✅ already exists → increase qty
-      final currentQty = (doc['quantity'] ?? 1) as int;
-
-      await docRef.update({'quantity': currentQty + item.quantity});
-    } else {
-      // ✅ new item
-      await docRef.set({
-        ...item.toMap(),
-
-        // 🔥 CRITICAL FIELD
-        'productId': item.productId,
-
-        'addedAt': FieldValue.serverTimestamp(),
-      });
-    }
+  /// ❌ REMOVE (FIXED)
+  Future<void> removeItem(String cartId) async {
+    await _cartRef.doc(cartId).delete(); // ✅ USE ID
   }
 
-  // ➖ REMOVE
-  Future<void> removeItem(String productId) async {
-    await _cartRef.doc(productId).delete();
-  }
-
-  // 🔄 UPDATE QTY
-  Future<void> updateQty(String productId, int qty) async {
+  /// 🔄 UPDATE QTY (FIXED)
+  Future<void> updateQty(String cartId, int qty) async {
     if (qty <= 0) {
-      await removeItem(productId);
+      await removeItem(cartId);
     } else {
-      await _cartRef.doc(productId).update({'quantity': qty});
+      await _cartRef.doc(cartId).update({'quantity': qty});
     }
   }
 }
