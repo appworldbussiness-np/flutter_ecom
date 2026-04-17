@@ -1,16 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ecom_/features/home/screens/edit_profile_screen.dart';
+import 'package:ecom_/features/notification/screens/notification_screen.dart';
 import 'package:ecom_/features/products/models/product_model.dart';
 import 'package:ecom_/features/products/screens/product_details_screen.dart';
 import 'package:ecom_/features/products/screens/checkout_screen.dart';
 import 'package:ecom_/features/products/screens/wishlist_screen.dart';
 import 'package:ecom_/providers/app_product_provider.dart';
 import 'package:ecom_/providers/auth_provider.dart';
+import 'package:ecom_/providers/notification_provider.dart';
 import 'package:ecom_/providers/theme_provider.dart';
 import 'package:ecom_/providers/wishlist_provider.dart';
 import 'package:ecom_/services/cart_service.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -239,10 +243,20 @@ class _HomeTabState extends State<HomeTab> {
                         color: cs.secondary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(
-                        Icons.notifications_outlined,
-                        color: cs.secondary,
-                        size: 22,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const NotificationScreen(),
+                            ),
+                          );
+                        },
+                        child: Icon(
+                          Icons.notifications_outlined,
+                          color: cs.secondary,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),
@@ -518,6 +532,7 @@ class _ProductCardState extends State<_ProductCard> {
                         icon: isLiked ? Icons.favorite : Icons.favorite_border,
                         isLiked: isLiked,
                         onTap: () {
+                          HapticFeedback.lightImpact();
                           final wasLiked = isLiked;
 
                           wishlist.toggle(product);
@@ -1348,23 +1363,37 @@ class SettingsTab extends StatelessWidget {
                   },
                 ),
 
-                _settingsTile(
-                  context: context,
-                  icon: Icons.notifications,
-                  iconColor: Colors.green,
-                  title: 'Notifications',
-                  subtitle: 'Push notifications settings',
-                  trailing: Switch(
-                    value: false,
-                    // Change color depending on dark/light mode
-                    // activeColor: isDark
-                    //     ? colorScheme.secondary
-                    //     : colorScheme.primary,
-                    // inactiveThumbColor: colorScheme.onSurface.withOpacity(0.5),
-                    onChanged: (value) {
-                      //must add push enabling logic here
-                    },
-                  ),
+                Selector<NotificationProvider, bool>(
+                  selector: (_, provider) => provider.isEnabled,
+                  builder: (context, isEnabled, _) {
+                    return _settingsTile(
+                      context: context,
+                      icon: Icons.notifications,
+                      iconColor: Colors.green,
+                      title: 'Notifications',
+                      subtitle: 'Push notifications settings',
+                      trailing: Switch(
+                        value: isEnabled,
+                        onChanged: (value) async {
+                          context.read<NotificationProvider>().setEnabled(
+                            value,
+                          );
+
+                          if (value) {
+                            // ✅ ENABLE
+                            await FirebaseMessaging.instance
+                                .requestPermission();
+                            await FirebaseMessaging.instance.subscribeToTopic(
+                              "all",
+                            );
+
+                            // ✅ SHOW SNACKBAR
+                            showNotificationSnackBar(context, value);
+                          }
+                        },
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -1423,6 +1452,33 @@ class SettingsTab extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void showNotificationSnackBar(BuildContext context, bool isEnabled) {
+    final snackBar = SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(12),
+      backgroundColor: isEnabled ? Colors.green : Colors.red,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+
+      content: Row(
+        children: [
+          Icon(
+            isEnabled ? Icons.notifications_active : Icons.notifications_off,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            isEnabled ? "Notifications Enabled" : "Notifications Disabled",
+            style: const TextStyle(color: Colors.white),
+          ),
+        ],
+      ),
+    );
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(snackBar);
   }
 
   Widget _settingsCard(BuildContext context, {required List<Widget> children}) {

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:ecom_/services/local_notification_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '/core/theme/app_theme.dart';
@@ -13,7 +15,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  // ── Animation controllers ─────────────────────────────────────────────────
+  // Animations
   late final AnimationController _logoController;
   late final AnimationController _textController;
   late final AnimationController _pulseController;
@@ -27,7 +29,8 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // Make status bar transparent over splash
+    _initFCM();
+
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -35,61 +38,81 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Logo animation — scale + fade in
+    // Controllers
     _logoController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
 
-    _logoScale = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack),
-    );
-
-    _logoFade = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _logoController, curve: Curves.easeIn));
-
-    // Text animation — fade + slide up
     _textController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
 
-    _textFade = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeIn));
-
-    _textSlide = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _textController, curve: Curves.easeOut));
-
-    // Pulse animation on the dot/loader
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
 
-    // Sequence: logo first → then text → then navigate
-    _logoController.forward().then((_) {
-      _textController.forward();
-    });
+    // Animations
+    _logoScale = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack),
+    );
 
+    _logoFade = Tween<double>(begin: 0, end: 1).animate(_logoController);
+
+    _textFade = Tween<double>(begin: 0, end: 1).animate(_textController);
+
+    _textSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(_textController);
+
+    // Start animation
+    _logoController.forward().then((_) => _textController.forward());
+
+    // Navigate
     Timer(const Duration(milliseconds: 3200), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => const AuthWrapper(),
-            transitionDuration: const Duration(milliseconds: 500),
             transitionsBuilder: (_, animation, __, child) =>
                 FadeTransition(opacity: animation, child: child),
           ),
         );
       }
     });
+  }
+
+  // 🔥 Firebase setup
+  Future<void> _initFCM() async {
+    final messaging = FirebaseMessaging.instance;
+
+    await LocalNotificationService.init();
+    await messaging.requestPermission();
+
+    String? token = await messaging.getToken();
+    print("🔥 FCM Token: $token");
+
+    FirebaseMessaging.onMessage.listen((message) {
+      final title = message.notification?.title ?? "No Title";
+      final body = message.notification?.body ?? "No Body";
+
+      LocalNotificationService.show(title: title, body: body);
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      print("👉 Notification clicked");
+    });
+
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance
+        .getInitialMessage();
+
+    if (initialMessage != null) {
+      print("🚀 Opened from terminated state");
+    }
   }
 
   @override
@@ -103,155 +126,100 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final isWide = size.width > 600;
 
     return Scaffold(
       backgroundColor: AppTheme.primaryColor,
       body: Stack(
         children: [
-          // ── Background decoration ──────────────────────────────────
           Positioned(
             top: -size.height * 0.12,
             right: -size.width * 0.2,
-            child: Container(
-              width: size.width * 0.7,
-              height: size.width * 0.7,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.04),
-              ),
-            ),
+            child: _circle(size.width * 0.7, Colors.white.withOpacity(0.04)),
           ),
           Positioned(
             bottom: -size.height * 0.08,
             left: -size.width * 0.15,
-            child: Container(
-              width: size.width * 0.55,
-              height: size.width * 0.55,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.accentColor.withOpacity(0.12),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: size.height * 0.25,
-            right: -size.width * 0.1,
-            child: Container(
-              width: size.width * 0.3,
-              height: size.width * 0.3,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.03),
-              ),
+            child: _circle(
+              size.width * 0.55,
+              AppTheme.accentColor.withOpacity(0.12),
             ),
           ),
 
-          // ── Main content ───────────────────────────────────────────
           Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: isWide ? size.width * 0.25 : 32,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo container
-                  ScaleTransition(
-                    scale: _logoScale,
-                    child: FadeTransition(
-                      opacity: _logoFade,
-                      child: Container(
-                        width: isWide ? 110 : 88,
-                        height: isWide ? 110 : 88,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(isWide ? 30 : 24),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            Icons.shopping_bag_rounded,
-                            size: isWide ? 54 : 44,
-                            color: AppTheme.accentColor,
-                          ),
-                        ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ScaleTransition(
+                  scale: _logoScale,
+                  child: FadeTransition(
+                    opacity: _logoFade,
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Icon(
+                        Icons.shopping_bag,
+                        size: 44,
+                        color: AppTheme.accentColor,
                       ),
                     ),
                   ),
-
-                  SizedBox(height: isWide ? 32 : 24),
-
-                  // App name + tagline
-                  FadeTransition(
-                    opacity: _textFade,
-                    child: SlideTransition(
-                      position: _textSlide,
-                      child: Column(
-                        children: [
-                          Text(
-                            'CozyWear',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: isWide ? 36 : 28,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Comfort Redefined',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: isWide ? 16 : 14,
-                              fontWeight: FontWeight.w400,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: isWide ? 60 : 48),
-
-                  // Animated dots loader
-                  FadeTransition(
-                    opacity: _textFade,
-                    child: _DotsLoader(accentColor: AppTheme.accentColor),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Version tag bottom ─────────────────────────────────────
-          Positioned(
-            bottom: 24 + MediaQuery.of(context).padding.bottom,
-            left: 0,
-            right: 0,
-            child: FadeTransition(
-              opacity: _textFade,
-              child: Text(
-                'v1.0.0',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
-                  fontSize: 12,
                 ),
-              ),
+                const SizedBox(height: 24),
+
+                FadeTransition(
+                  opacity: _textFade,
+                  child: SlideTransition(
+                    position: _textSlide,
+                    child: Column(
+                      children: [
+                        const Text(
+                          "CozyWear",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          "Comfort Redefined",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+
+                FadeTransition(
+                  opacity: _textFade,
+                  child: _DotsLoader(accentColor: AppTheme.accentColor),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _circle(double size, Color color) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
 }
 
-// ── Animated dots loader ───────────────────────────────────────────────────
+// 🔵 Loader
 class _DotsLoader extends StatefulWidget {
   final Color accentColor;
 
@@ -264,33 +232,28 @@ class _DotsLoader extends StatefulWidget {
 class _DotsLoaderState extends State<_DotsLoader>
     with TickerProviderStateMixin {
   final List<AnimationController> _controllers = [];
-  final List<Animation<double>> _animations = [];
 
   @override
   void initState() {
     super.initState();
+
     for (int i = 0; i < 3; i++) {
       final controller = AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 600),
       );
-      final animation = Tween<double>(
-        begin: 0.4,
-        end: 1.0,
-      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut));
-      _controllers.add(controller);
-      _animations.add(animation);
 
-      // Stagger each dot
       Future.delayed(Duration(milliseconds: i * 200), () {
         if (mounted) controller.repeat(reverse: true);
       });
+
+      _controllers.add(controller);
     }
   }
 
   @override
   void dispose() {
-    for (final c in _controllers) {
+    for (var c in _controllers) {
       c.dispose();
     }
     super.dispose();
@@ -300,20 +263,20 @@ class _DotsLoaderState extends State<_DotsLoader>
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (i) {
+      children: _controllers.map((c) {
         return AnimatedBuilder(
-          animation: _animations[i],
+          animation: c,
           builder: (_, __) => Container(
             margin: const EdgeInsets.symmetric(horizontal: 5),
             width: 8,
             height: 8,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: widget.accentColor.withOpacity(_animations[i].value),
+              color: widget.accentColor.withOpacity(0.4 + (c.value * 0.6)),
             ),
           ),
         );
-      }),
+      }).toList(),
     );
   }
 }

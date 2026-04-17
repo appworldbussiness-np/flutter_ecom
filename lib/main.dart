@@ -4,9 +4,12 @@ import 'package:ecom_/firebase_options.dart';
 import 'package:ecom_/providers/admin_product_provider.dart';
 import 'package:ecom_/providers/app_product_provider.dart';
 import 'package:ecom_/providers/cart_provider.dart';
+import 'package:ecom_/providers/notification_provider.dart';
 import 'package:ecom_/providers/profile_provider.dart';
 import 'package:ecom_/providers/theme_provider.dart';
 import 'package:ecom_/providers/wishlist_provider.dart';
+import 'package:ecom_/services/fcm_service.dart';
+import 'package:ecom_/services/local_notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,40 +18,78 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'core/constants/app_constants.dart';
-
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
 import 'features/home/screens/home_screen.dart';
 
+/// ✅ BACKGROUND HANDLER
+Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  FirebaseMessaging.onBackgroundMessage((message) async {});
+
+  // ✅ Background notifications
+  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+
+  // ✅ Init local notifications
+  await LocalNotificationService.init();
+
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => AppProductProvider()),
         ChangeNotifierProvider(create: (_) => StorageProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()..loadUser()),
-        ChangeNotifierProvider(create: (context) => AdminProductProvider()),
+        ChangeNotifierProvider(create: (_) => AdminProductProvider()),
         ChangeNotifierProvider(create: (_) => WishlistProvider()),
+
+        // ✅ ONLY ONE INSTANCE
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: const MyApp(),
     ),
   );
 }
 
-class MyApp extends StatelessWidget {
+/// 🔥 ROOT APP
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+
+    /// ✅ SAFE: wait until context is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<NotificationProvider>();
+
+      // ✅ LOAD SAVED NOTIFICATIONS
+      provider.loadNotifications();
+
+      // ✅ INIT FCM (connect Firebase → Provider)
+      FCMService.init(provider);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
+
       themeMode: context.watch<StorageProvider>().isDarktheme
           ? ThemeMode.dark
           : ThemeMode.light,
@@ -61,7 +102,7 @@ class MyApp extends StatelessWidget {
         AppConstants.registerRoute: (_) => const RegisterScreen(),
         AppConstants.forgotPasswordRoute: (_) => const ForgotPasswordScreen(),
         AppConstants.homeRoute: (_) => const HomeScreen(),
-      }, // in your routes setup
+      },
     );
   }
 }

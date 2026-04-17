@@ -426,9 +426,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _buildAnalytics(provider),
             const SizedBox(height: 16),
-            _buildProductList(products),
-            const SizedBox(height: 16),
             _buildMonthlySales(),
+            const SizedBox(height: 16),
+            _buildProductList(products),
             const SizedBox(height: 16),
 
             _buildInventoryPanel(provider, scrollable: true),
@@ -450,9 +450,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 children: [
                   _buildAnalytics(provider),
                   const SizedBox(height: 16),
-                  _buildProductList(products),
-                  const SizedBox(height: 16),
                   _buildMonthlySales(),
+                  const SizedBox(height: 16),
+                  _buildProductList(products),
                 ],
               ),
             ),
@@ -474,9 +474,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               children: [
                 _buildAnalytics(provider),
                 const SizedBox(height: 20),
-                _buildProductList(products),
-                const SizedBox(height: 20),
                 _buildMonthlySales(),
+                const SizedBox(height: 20),
+                _buildProductList(products),
                 const SizedBox(height: 16),
               ],
             ),
