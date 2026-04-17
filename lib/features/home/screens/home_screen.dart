@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:ecom_/features/auth/screens/login_screen.dart';
 import 'package:ecom_/features/home/screens/edit_profile_screen.dart';
 import 'package:ecom_/features/notification/screens/notification_screen.dart';
 import 'package:ecom_/features/products/models/product_model.dart';
@@ -1436,12 +1437,19 @@ class SettingsTab extends StatelessWidget {
                               backgroundColor: colorScheme.error,
                             ),
                             onPressed: () async {
-                              Navigator.of(ctx).pop();
+                              Navigator.of(ctx).pop(); // close dialog
+
                               await Provider.of<AuthProvider>(
                                 context,
                                 listen: false,
                               ).logout();
-                              Navigator.pop(context);
+
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                  builder: (_) => const LoginScreen(),
+                                ),
+                                (route) => false,
+                              );
                             },
                             child: const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 16),
