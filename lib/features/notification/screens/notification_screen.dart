@@ -51,7 +51,7 @@ class NotificationScreen extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
+                    color: theme.colorScheme.secondary,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(

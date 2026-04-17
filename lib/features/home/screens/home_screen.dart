@@ -1267,6 +1267,8 @@ class CartTab extends StatelessWidget {
 class SettingsTab extends StatelessWidget {
   const SettingsTab({super.key});
 
+  bool get isDark => false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1376,7 +1378,12 @@ class SettingsTab extends StatelessWidget {
                         value: isEnabled,
                         onChanged: (value) async {
                           context.read<NotificationProvider>().setEnabled(
-                            value,
+                            value, // Change color depending on dark/light mode
+                            activeColor: isDark
+                                ? colorScheme.secondary
+                                : colorScheme.primary,
+                            // inactiveThumbColor: colorScheme.onSurface
+                            //.withOpacity(0.5),
                           );
 
                           if (value) {

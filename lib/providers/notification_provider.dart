@@ -12,7 +12,7 @@ class NotificationProvider extends ChangeNotifier {
   List<AppNotification> get notifications => _notifications;
   bool get isEnabled => _isEnabled;
 
-  void setEnabled(bool value) {
+  void setEnabled(bool value, {required Color activeColor}) {
     _isEnabled = value;
     notifyListeners();
   }
