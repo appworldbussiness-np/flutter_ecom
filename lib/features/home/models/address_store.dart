@@ -6,7 +6,11 @@ class AddressStore {
   static String? address;
   static String? city;
 
-  /// ✅ SAVE to device
+  /// ✅ CHECK DATA
+  static bool get hasData =>
+      name != null && phone != null && address != null && city != null;
+
+  /// ✅ SAVE (PERSISTENT)
   static Future<void> save({
     required String name,
     required String phone,
@@ -20,14 +24,14 @@ class AddressStore {
     await prefs.setString('address', address);
     await prefs.setString('city', city);
 
-    /// also update memory
+    /// also keep in memory
     AddressStore.name = name;
     AddressStore.phone = phone;
     AddressStore.address = address;
     AddressStore.city = city;
   }
 
-  /// ✅ LOAD from device
+  /// ✅ LOAD (FROM STORAGE)
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -37,10 +41,7 @@ class AddressStore {
     city = prefs.getString('city');
   }
 
-  static bool get hasData =>
-      name != null && phone != null && address != null && city != null;
-
-  /// ✅ CLEAR storage
+  /// ✅ CLEAR (OPTIONAL)
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
 

@@ -23,30 +23,27 @@ class ProfileProvider extends ChangeNotifier {
 
   /// 🔹 Update profile
   Future<void> updateProfile({
-    required String newName,
+    String? newName,
     String? newEmail,
-    required String newPhone,
-    required String newAddress,
+    String? newPhone,
+    String? newAddress,
   }) async {
-    isLoading = true;
-    notifyListeners();
+    if (newName != null) name = newName;
+    if (newEmail != null) email = newEmail;
+    if (newPhone != null) phone = newPhone;
+    if (newAddress != null) address = newAddress;
 
-    try {
-      await _service.updateName(newName);
+    /// 🔥 SAVE TO FIRESTORE (OPTIONAL)
+    // await FirebaseFirestore.instance
+    //   .collection('users')
+    //   .doc(FirebaseAuth.instance.currentUser!.uid)
+    //   .set({
+    //     'name': name,
+    //     'email': email,
+    //     'phone': phone,
+    //     'address': address,
+    //   }, SetOptions(merge: true));
 
-      if (newEmail != null) {
-        await _service.updateEmail(newEmail);
-        email = newEmail;
-      }
-
-      name = newName;
-      phone = newPhone;
-      address = newAddress;
-    } catch (e) {
-      rethrow;
-    }
-
-    isLoading = false;
     notifyListeners();
   }
 

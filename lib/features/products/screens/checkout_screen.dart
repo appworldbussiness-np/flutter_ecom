@@ -6,8 +6,9 @@ import 'package:ecom_/core/store/address_store.dart';
 import 'package:ecom_/core/theme/app_theme.dart';
 import 'package:ecom_/providers/profile_provider.dart';
 import 'package:esewa_flutter_sdk/esewa_payment_success_result.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:ecom_/services/order_service.dart';
+import 'package:ecom_/services/order_service_app.dart';
 import 'package:esewa_flutter_sdk/esewa_flutter_sdk.dart';
 import 'package:esewa_flutter_sdk/esewa_config.dart';
 import 'package:esewa_flutter_sdk/esewa_payment.dart';
@@ -51,8 +52,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get deliveryFee => subtotal > 1000 ? 0 : 100;
   double get discount => subtotal > 2000 ? 100 : 0;
   double get finalTotal => subtotal + deliveryFee - discount;
+
   //forsavingaddress
-  // 🔹 Load saved address
+
+  // Load saved address
+  @override
+  void initState() {
+    super.initState();
+    _loadAddress();
+  }
+
+  void _loadAddress() async {
+    await AddressStore.load();
+
+    if (!mounted) return;
+
+    if (AddressStore.hasData) {
+      setState(() {
+        nameCtrl.text = AddressStore.name ?? '';
+        phoneCtrl.text = AddressStore.phone ?? '';
+        addressCtrl.text = AddressStore.address ?? '';
+        selectedCity = AddressStore.city;
+      });
+    }
+  }
 
   bool _isInitialized = false;
   @override
@@ -68,16 +91,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     addressCtrl.text = profile.address;
 
     _isInitialized = true;
-  }
-
-  void _autoFillFromProfile() {
-    final profile = context.read<ProfileProvider>();
-
-    setState(() {
-      nameCtrl.text = profile.name;
-      phoneCtrl.text = profile.phone;
-      addressCtrl.text = profile.address;
-    });
   }
 
   void _autoFill() {
@@ -99,8 +112,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onTap: () => Navigator.pop(context),
           child: Icon(Icons.arrow_back_ios_new, size: 18),
         ),
-        title: const Text("Checkout"),
         centerTitle: true,
+        elevation: 0,
+        title: const Text(
+          "Checkout",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
       ),
 
       body: SingleChildScrollView(
@@ -145,6 +162,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // 📍 ADDRESS CARD
   Widget _addressCard() {
+    // final theme = Theme.of(context);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -197,16 +216,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ),
               ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: _autoFillFromProfile,
-                  icon: Icon(Icons.auto_fix_high, size: 18),
-                  label: const Text("Use Profile"),
-                ),
-              ],
-            ),
+            // Row(
+            //   mainAxisAlignment: MainAxisAlignment.end,
+            //   children: [
+            //     TextButton.icon(
+            //       style: TextButton.styleFrom(
+            //         foregroundColor: theme.textTheme.bodySmall?.color,
+            //         textStyle: theme.textTheme.titleLarge,
+            //       ),
+            //       onPressed: _autoFillFromProfile,
+            //       icon: Icon(Icons.auto_fix_high, size: 16),
+            //       label: const Text(
+            //         "Use saved address",
+            //         style: TextStyle(fontSize: 12),
+            //       ),
+            //     ),
+            //   ],
+            // ),
           ],
         ),
       ),
@@ -493,62 +519,76 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // 🔹 ONLY IMPORTANT PART SHOWN (UPDATED _placeOrder)
 
   void _placeOrder() async {
-    AddressStore.save(
-      name: nameCtrl.text,
-      phone: phoneCtrl.text,
-      address: addressCtrl.text,
-      city: selectedCity ?? '',
-    );
-
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => isLoading = true);
 
-    /// ✅ 🔥 FIX: FORCE CLEAN + CONSISTENT DATA
-    final enrichedItems = widget.items.map((item) {
-      final size =
-          item["size"] ??
-          item["selectedSize"] ??
-          item["variant"]?["size"] ??
-          "";
-
-      final color =
-          item["color"] ??
-          item["selectedColor"] ??
-          item["variant"]?["color"] ??
-          "";
-
-      final colorHex =
-          item["colorHex"] ??
-          item["selectedColorHex"] ??
-          item["variant"]?["colorHex"] ??
-          "";
-
-      return {
-        ...item,
-
-        /// ✅ ALWAYS SAVE THESE KEYS
-        "size": size.toString(),
-        "color": color.toString(),
-        "colorHex": colorHex.toString(),
-      };
-    }).toList();
-
-    /// 🔍 DEBUG PRINT (VERY IMPORTANT)
-    for (var i in enrichedItems) {
-      print("🧾 ITEM => ${i['name']}");
-      print("   size: ${i['size']}");
-      print("   color: ${i['color']}");
-      print("   hex: ${i['colorHex']}");
-    }
-
     try {
       /// =========================
-      /// COD ORDER
+      /// ✅ SAVE ADDRESS
       /// =========================
+      final profile = context.read<ProfileProvider>();
+
+      await profile.updateProfile(
+        newName: nameCtrl.text,
+        newPhone: phoneCtrl.text,
+        newAddress: addressCtrl.text,
+      );
+
+      AddressStore.save(
+        name: nameCtrl.text,
+        phone: phoneCtrl.text,
+        address: addressCtrl.text,
+        city: selectedCity ?? '',
+      );
+
+      /// =========================
+      /// ✅ CLEAN ITEMS FIRST (IMPORTANT)
+      /// =========================
+      final enrichedItems = widget.items.map((item) {
+        final size =
+            item["size"] ??
+            item["selectedSize"] ??
+            item["variant"]?["size"] ??
+            "";
+
+        final color =
+            item["color"] ??
+            item["selectedColor"] ??
+            item["variant"]?["color"] ??
+            "";
+
+        final colorHex =
+            item["colorHex"] ??
+            item["selectedColorHex"] ??
+            item["variant"]?["colorHex"] ??
+            "";
+
+        return {
+          ...item,
+          "size": size.toString(),
+          "color": color.toString(),
+          "colorHex": colorHex.toString(),
+        };
+      }).toList();
+
+      /// =========================
+      /// 🔍 DEBUG (optional)
+      /// =========================
+      for (var i in enrichedItems) {
+        print("🧾 ITEM => ${i['name']}");
+        print("   size: ${i['size']}");
+        print("   color: ${i['color']}");
+      }
+
+      /// =========================
+      /// 💳 PAYMENT LOGIC
+      /// =========================
+
+      /// ✅ CASH ON DELIVERY
       if (selectedPayment == "cod") {
         await OrderService.placeOrder(
-          enrichedItems, // ✅ FIXED
+          enrichedItems,
           finalTotal,
           {
             'name': nameCtrl.text,
@@ -567,7 +607,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       /// =========================
-      /// ESEWA PAYMENT
+      /// 💰 ESEWA
       /// =========================
       EsewaFlutterSdk.initPayment(
         esewaConfig: EsewaConfig(
@@ -590,7 +630,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }
 
           await OrderService.placeOrder(
-            enrichedItems, // ✅ FIXED
+            enrichedItems,
             finalTotal,
             {
               'name': nameCtrl.text,
@@ -650,8 +690,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  void _success() {
+  Future<void> _clearCart() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final cartRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('cart');
+
+    final snapshot = await cartRef.get();
+
+    for (var doc in snapshot.docs) {
+      await doc.reference.delete();
+    }
+
+    print("🧹 Cart cleared after checkout");
+  }
+
+  void _success() async {
     if (!mounted) return;
+
+    /// 🔥 CLEAR CART FIRST
+    await _clearCart();
 
     setState(() => isLoading = false);
 
@@ -677,10 +738,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
 
-    /// ✅ Navigate back to home (clears checkout stack)
+    /// 🔥 GO TO CART PAGE (EMPTY STATE)
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      Navigator.popUntil(context, (route) => route.isFirst);
+
+      Navigator.pop(context);
     });
   }
 

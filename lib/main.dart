@@ -5,6 +5,7 @@ import 'package:ecom_/providers/admin_product_provider.dart';
 import 'package:ecom_/providers/app_product_provider.dart';
 import 'package:ecom_/providers/cart_provider.dart';
 import 'package:ecom_/providers/notification_provider.dart';
+import 'package:ecom_/providers/order_provider_app.dart';
 import 'package:ecom_/providers/profile_provider.dart';
 import 'package:ecom_/providers/theme_provider.dart';
 import 'package:ecom_/providers/wishlist_provider.dart';
@@ -23,20 +24,38 @@ import 'features/auth/screens/register_screen.dart';
 import 'features/home/screens/home_screen.dart';
 
 /// ✅ BACKGROUND HANDLER
+/// FIX: Must call ensureInitialized() here too — this handler runs in an
+/// isolate where the binding is NOT already set up.
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }
 
-void main() async {
+Future<void> main() async {
+  // FIX 1: ensureInitialized() is correctly first — keep it here.
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  // ✅ Background notifications
+  // FIX 2: Register the background handler BEFORE initializeApp().
+  // Firebase messaging sets up its background isolate during initializeApp,
+  // so the handler must be registered first or it may be missed on cold start.
   FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
-  // ✅ Init local notifications
-  await LocalNotificationService.init();
+  // FIX 3: Defer the first frame so Flutter doesn't attempt to render while
+  // Firebase + notifications are still initializing. This closes the timing
+  // window that causes "flutter/lifecycle messages discarded" warnings.
+  final binding = WidgetsBinding.instance;
+  binding.deferFirstFrame();
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await LocalNotificationService.init();
+  } finally {
+    // FIX 4: Always release the frame — even if init fails — so the app
+    // doesn't freeze on a white screen.
+    binding.allowFirstFrame();
+  }
 
   runApp(
     MultiProvider(
@@ -48,8 +67,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ProfileProvider()..loadUser()),
         ChangeNotifierProvider(create: (_) => AdminProductProvider()),
         ChangeNotifierProvider(create: (_) => WishlistProvider()),
-
-        // ✅ ONLY ONE INSTANCE
+        ChangeNotifierProvider(create: (_) => OrderProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: const MyApp(),
@@ -70,14 +88,13 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
 
-    /// ✅ SAFE: wait until context is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // FIX 5: Guard against the widget being disposed before the callback
+      // fires (e.g. hot restart during startup).
+      if (!mounted) return;
+
       final provider = context.read<NotificationProvider>();
-
-      // ✅ LOAD SAVED NOTIFICATIONS
       provider.loadNotifications();
-
-      // ✅ INIT FCM (connect Firebase → Provider)
       FCMService.init(provider);
     });
   }

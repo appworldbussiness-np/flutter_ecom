@@ -26,9 +26,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool showCurrentPass = false;
   bool showNewPass = false;
 
+  bool _loaded = false;
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_loaded) return;
 
     final profile = context.read<ProfileProvider>();
     final user = FirebaseAuth.instance.currentUser;
@@ -40,6 +44,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     isGoogleUser =
         user?.providerData.any((p) => p.providerId == "google.com") ?? false;
+
+    _loaded = true;
   }
 
   @override

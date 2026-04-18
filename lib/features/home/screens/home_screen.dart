@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ecom_/features/auth/screens/login_screen.dart';
 import 'package:ecom_/features/home/screens/edit_profile_screen.dart';
 import 'package:ecom_/features/notification/screens/notification_screen.dart';
+import 'package:ecom_/features/orders/screens/order_screen.dart';
 import 'package:ecom_/features/products/models/product_model.dart';
 import 'package:ecom_/features/products/screens/product_details_screen.dart';
 import 'package:ecom_/features/products/screens/checkout_screen.dart';
@@ -11,7 +12,7 @@ import 'package:ecom_/providers/auth_provider.dart';
 import 'package:ecom_/providers/notification_provider.dart';
 import 'package:ecom_/providers/theme_provider.dart';
 import 'package:ecom_/providers/wishlist_provider.dart';
-import 'package:ecom_/services/cart_service.dart';
+
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -769,13 +770,10 @@ class _SearchTabState extends State<SearchTab> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
+        elevation: 0,
         title: const Text(
           "Search",
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-            color: Colors.white,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
       ),
       body: Column(
@@ -972,9 +970,10 @@ class CartTab extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
+        elevation: 0,
         title: const Text(
-          'My Cart',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          "My Cart",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -1238,199 +1237,219 @@ class SettingsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final textTheme = theme.textTheme;
+    // final textTheme = theme.textTheme;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
         centerTitle: true,
-        backgroundColor: colorScheme.primary,
         elevation: 0,
-        title: Text(
-          'Settings',
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
+        title: const Text(
+          "Settings",
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _settingsCard(
-              context,
+        child: SizedBox(
+          //   height: 360,
+          child: SingleChildScrollView(
+            child: Column(
               children: [
-                _settingsTile(
-                  context: context,
-                  icon: Icons.person_outline_rounded,
-                  iconColor: Colors.blue,
-                  title: 'Profile',
-                  subtitle: 'Manage your account',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const EditProfileScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _settingsTile(
-                  context: context,
-                  icon: Icons.payment_outlined,
-                  iconColor: Colors.green,
-                  title: 'Payment Methods',
-                  subtitle: 'eSewa and Cash on Delivery (COD) options',
-                ),
-                _settingsTile(
-                  context: context,
-                  icon: Icons.favorite_border,
-                  iconColor: Colors.green,
-                  title: 'Wishlists',
-                  subtitle: 'quick access to your favourite products',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const WishlistScreen()),
-                    );
-                  },
-                ),
-              ],
-            ),
-            _settingsCard(
-              context,
-              children: [
-                Selector<StorageProvider, bool>(
-                  selector: (_, provider) => provider.isDarktheme,
-                  builder: (context, isDark, child) {
-                    final theme = Theme.of(context);
-                    final colorScheme = theme.colorScheme;
-
-                    return _settingsTile(
+                _settingsCard(
+                  context,
+                  children: [
+                    _settingsTile(
                       context: context,
-                      icon: Icons.dark_mode_outlined,
+                      icon: Icons.person_outline_rounded,
                       iconColor: Colors.blue,
-                      title: 'Dark Mode',
-                      subtitle: 'Switch between light and dark themes',
-                      trailing: Switch(
-                        value: isDark,
-                        // Change color depending on dark/light mode
-                        activeColor: isDark
-                            ? colorScheme.secondary
-                            : colorScheme.primary,
-                        inactiveThumbColor: colorScheme.onSurface.withOpacity(
-                          0.5,
-                        ),
-                        onChanged: (value) {
-                          context.read<StorageProvider>().setdarktheme(value);
-                        },
-                      ),
-                    );
-                  },
+                      title: 'Profile',
+                      subtitle: 'Manage your account',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const EditProfileScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _settingsTile(
+                      context: context,
+                      icon: Icons.payment_outlined,
+                      iconColor: Colors.green,
+                      title: 'Payment Methods',
+                      subtitle: 'eSewa and Cash on Delivery (COD) options',
+                    ),
+                    _settingsTile(
+                      context: context,
+                      icon: Icons.favorite_border,
+                      iconColor: Colors.green,
+                      title: 'Wishlists',
+                      subtitle: 'quick access to your favourite products',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const WishlistScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _settingsTile(
+                      context: context,
+                      icon: Icons.shopping_bag,
+                      iconColor: Colors.blue,
+                      title: 'Orders',
+                      subtitle: 'get access to your orders',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => OrderScreen()),
+                        );
+                      },
+                    ),
+                  ],
                 ),
 
-                Selector<NotificationProvider, bool>(
-                  selector: (_, provider) => provider.isEnabled,
-                  builder: (context, isEnabled, _) {
-                    return Selector<StorageProvider, bool>(
+                _settingsCard(
+                  context,
+                  children: [
+                    Selector<StorageProvider, bool>(
                       selector: (_, provider) => provider.isDarktheme,
-                      builder: (context, isDark, __) {
+                      builder: (context, isDark, child) {
                         final theme = Theme.of(context);
                         final colorScheme = theme.colorScheme;
 
                         return _settingsTile(
                           context: context,
-                          icon: Icons.notifications,
-                          iconColor: Colors.green,
-                          title: 'Notifications',
-                          subtitle: 'Push notifications settings',
+                          icon: Icons.dark_mode_outlined,
+                          iconColor: Colors.blue,
+                          title: 'Dark Mode',
+                          subtitle: 'Switch between light and dark themes',
                           trailing: Switch(
-                            value: isEnabled,
+                            value: isDark,
+                            // Change color depending on dark/light mode
                             activeColor: isDark
                                 ? colorScheme.secondary
                                 : colorScheme.primary,
-                            onChanged: (value) async {
-                              context.read<NotificationProvider>().setEnabled(
+                            inactiveThumbColor: colorScheme.onSurface
+                                .withOpacity(0.5),
+                            onChanged: (value) {
+                              context.read<StorageProvider>().setdarktheme(
                                 value,
-                                activeColor: colorScheme.onSurface,
                               );
-
-                              if (value) {
-                                await FirebaseMessaging.instance
-                                    .requestPermission();
-                                await FirebaseMessaging.instance
-                                    .subscribeToTopic("all");
-                                showNotificationSnackBar(context, value);
-                              }
                             },
                           ),
                         );
                       },
-                    );
-                  },
-                ),
-              ],
-            ),
+                    ),
 
-            _settingsCard(
-              context,
-              children: [
-                _settingsTile(
-                  context: context,
-                  icon: Icons.logout_rounded,
-                  iconColor: Colors.red,
-                  title: 'Logout',
-                  subtitle: 'Sign out of your account',
-                  trailing: const SizedBox.shrink(),
-                  onTap: () {
-                    showDialog(
+                    Selector<NotificationProvider, bool>(
+                      selector: (_, provider) => provider.isEnabled,
+                      builder: (context, isEnabled, _) {
+                        return Selector<StorageProvider, bool>(
+                          selector: (_, provider) => provider.isDarktheme,
+                          builder: (context, isDark, __) {
+                            final theme = Theme.of(context);
+                            final colorScheme = theme.colorScheme;
+
+                            return _settingsTile(
+                              context: context,
+                              icon: Icons.notifications,
+                              iconColor: Colors.green,
+                              title: 'Notifications',
+                              subtitle: 'Push notifications settings',
+                              trailing: Switch(
+                                value: isEnabled,
+                                activeColor: isDark
+                                    ? colorScheme.secondary
+                                    : colorScheme.primary,
+                                onChanged: (value) async {
+                                  context
+                                      .read<NotificationProvider>()
+                                      .setEnabled(
+                                        value,
+                                        activeColor: colorScheme.onSurface,
+                                      );
+
+                                  if (value) {
+                                    await FirebaseMessaging.instance
+                                        .requestPermission();
+                                    await FirebaseMessaging.instance
+                                        .subscribeToTopic("all");
+                                    showNotificationSnackBar(context, value);
+                                  }
+                                },
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                SizedBox(height: 10),
+                _settingsCard(
+                  context,
+                  children: [
+                    _settingsTile(
                       context: context,
-                      builder: (ctx) => AlertDialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        title: const Text("Confirm Logout"),
-                        content: const Text(
-                          "Are you sure you want to log out?",
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text("Cancel"),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: colorScheme.error,
+                      icon: Icons.logout_rounded,
+                      iconColor: Colors.red,
+                      title: 'Logout',
+                      subtitle: 'Sign out of your account',
+                      trailing: const SizedBox.shrink(),
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            onPressed: () async {
-                              Navigator.of(ctx).pop(); // close dialog
-
-                              await Provider.of<AuthProvider>(
-                                context,
-                                listen: false,
-                              ).logout();
-
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute(
-                                  builder: (_) => const LoginScreen(),
+                            title: const Text("Confirm Logout"),
+                            content: const Text(
+                              "Are you sure you want to log out?",
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                child: const Text("Cancel"),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: colorScheme.error,
                                 ),
-                                (route) => false,
-                              );
-                            },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16),
-                              child: Text("Logout"),
-                            ),
+                                onPressed: () async {
+                                  Navigator.of(ctx).pop(); // close dialog
+
+                                  await Provider.of<AuthProvider>(
+                                    context,
+                                    listen: false,
+                                  ).logout();
+
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(
+                                      builder: (_) => const LoginScreen(),
+                                    ),
+                                    (route) => false,
+                                  );
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 16),
+                                  child: Text("Logout"),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
