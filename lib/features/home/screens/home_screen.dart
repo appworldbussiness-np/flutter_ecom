@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:ecom_/core/theme/app_theme.dart';
 import 'package:ecom_/features/auth/screens/login_screen.dart';
 import 'package:ecom_/features/home/screens/edit_profile_screen.dart';
 import 'package:ecom_/features/notification/screens/notification_screen.dart';
@@ -1015,108 +1016,388 @@ class CartTab extends StatelessWidget {
     String id,
     Map<String, dynamic> data,
   ) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-      /// ✅ TAP → GO TO PRODUCT DETAILS
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    // Surfaces
+    final cardBg = cs.surface;
+    final elevated = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF0F3FA);
+    final border = isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE4E9F2);
+
+    // Text
+    final textCol = cs.onSurface;
+    final muted = theme.textTheme.bodyMedium?.color?.withOpacity(0.7);
+    final faint = theme.textTheme.bodyMedium?.color?.withOpacity(0.4);
+
+    // Brand (from your AppTheme)
+    final accent = cs.secondary;
+    final accentDim = cs.secondary.withOpacity(0.12);
+
+    // Danger (keep custom or move to theme later)
+    const danger = Color(0xFFFF5B5B);
+    const dangerDim = Color(0x15FF5B5B);
+
+    final qty = (data['quantity'] ?? 1) as int;
+    final price = (data['price'] ?? 0).toDouble();
+    final total = price * qty;
+    final size = data['size']?.toString() ?? '';
+    final colorName = data['color']?.toString() ?? '';
+    final colorHex = data['colorHex']?.toString() ?? '';
+    final imageUrl = data['image'] ?? '';
+    final name = data['name'] ?? '';
+
+    Color? swatch;
+    if (colorHex.isNotEmpty) {
+      try {
+        swatch = Color(int.parse(colorHex.replaceFirst('#', '0xFF')));
+      } catch (_) {}
+    }
+
+    return GestureDetector(
       onTap: () {
         final product = Product(
           id: data['productId'],
-          name: data['name'] ?? '',
-          price: (data['price'] ?? 0).toDouble(),
-          images: [data['image'] ?? ''],
+          name: name,
+          price: price,
+          images: [imageUrl],
           description: data['description'] ?? '',
-          sizes: [], // optional
-          colors: [], // optional
+          sizes: [],
+          colors: [],
           isInStock: true,
           category: 'general',
           createdAt: DateTime.now(),
         );
-
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ProductDetailsScreen(
               product: product,
-
-              /// ✅ PASS SELECTED VALUES
               initialSize: data['size'],
               initialColor: data['color'],
             ),
           ),
         );
       },
-
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            /// IMAGE
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                data['image'] ?? '',
-                width: 70,
-                height: 70,
-                fit: BoxFit.cover,
-              ),
+          color: cardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border, width: 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
             ),
-
-            const SizedBox(width: 12),
-
-            /// DETAILS
-            Expanded(
-              child: Column(
+          ],
+        ),
+        child: Column(
+          children: [
+            // ── TOP ROW: image + info + remove ──────────────────────────────
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    data['name'] ?? '',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  // Thumbnail with qty badge overlay
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: SizedBox(
+                          width: 78,
+                          height: 88,
+                          child: imageUrl.isNotEmpty
+                              ? Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: elevated,
+                                    child: Icon(
+                                      Icons.image_outlined,
+                                      color: faint,
+                                      size: 28,
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  color: elevated,
+                                  child: Icon(
+                                    Icons.image_outlined,
+                                    color: faint,
+                                    size: 28,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      if (qty > 1)
+                        Positioned(
+                          top: 5,
+                          right: 5,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: accent,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '×$qty',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
 
-                  const SizedBox(height: 4),
+                  const SizedBox(width: 12),
 
-                  Text("NPR ${data['price']}"),
+                  // Info column
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Product name
+                        Text(
+                          name,
+                          style: TextStyle(
+                            color: textCol,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
 
-                  /// ✅ SIZE
-                  if (data['size'] != null && data['size'] != "default")
-                    Text("Size: ${data['size']}"),
+                        const SizedBox(height: 8),
 
-                  /// ✅ COLOR
-                  if (data['color'] != null && data['color'] != "default")
-                    Text("Color: ${data['color']}"),
+                        // Variant chips
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 5,
+                          children: [
+                            if (size.isNotEmpty && size != 'default')
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: accentDim,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'Size: $size',
+                                  style: const TextStyle(
+                                    // color: accent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            if (colorName.isNotEmpty && colorName != 'default')
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: elevated,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (swatch != null) ...[
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: swatch,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(
+                                              0.4,
+                                            ),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 5),
+                                    ],
+                                    Text(
+                                      colorName,
+                                      style: TextStyle(
+                                        color: muted,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
 
-                  const SizedBox(height: 8),
+                        const SizedBox(height: 10),
 
-                  /// QUANTITY
-                  Row(
-                    children: [
-                      _qtyBtn(() => _updateQty(id, data, -1), Icons.remove),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text("${data['quantity']}"),
+                        // Price
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (qty > 1) ...[
+                              Text(
+                                'NPR ${price.toStringAsFixed(0)}',
+                                style: TextStyle(color: swatch, fontSize: 11),
+                              ),
+                              Text(
+                                ' × $qty  =  ',
+                                style: TextStyle(color: faint, fontSize: 11),
+                              ),
+                              Text(
+                                'NPR ${total.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  //  color: accent,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ] else
+                              Text(
+                                'NPR ${price.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  // color: accent,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Remove ×
+                  GestureDetector(
+                    onTap: () => _deleteItem(id),
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: dangerDim,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      _qtyBtn(() => _updateQty(id, data, 1), Icons.add),
-                    ],
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: danger,
+                        size: 15,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
 
-            /// ❌ REMOVE BUTTON
-            GestureDetector(
-              onTap: () => _deleteItem(id),
-              child: const Text(
-                "Remove",
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
+            // ── BOTTOM BAR: quantity stepper ─────────────────────────────────
+            Container(
+              decoration: BoxDecoration(
+                color: elevated,
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(18),
                 ),
+                border: Border(top: BorderSide(color: border, width: 0.5)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(
+                children: [
+                  Icon(Icons.inventory_2_outlined, size: 13, color: faint),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Quantity',
+                    style: TextStyle(
+                      color: muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const Spacer(),
+                  // Stepper pill
+                  Container(
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: border, width: 0.5),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Minus
+                        GestureDetector(
+                          onTap: qty > 1
+                              ? () => _updateQty(id, data, -1)
+                              : null,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.remove_rounded,
+                              size: 15,
+                              color: qty > 1 ? textCol : faint,
+                            ),
+                          ),
+                        ),
+                        // Count with pop animation
+                        SizedBox(
+                          width: 36,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, anim) =>
+                                ScaleTransition(scale: anim, child: child),
+                            child: Text(
+                              '$qty',
+                              key: ValueKey(qty),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: textCol,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Plus
+                        GestureDetector(
+                          onTap: () => _updateQty(id, data, 1),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: accentDim,
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: const Icon(
+                              Icons.add_rounded,
+                              size: 15,
+                              color: AppTheme.accentColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1125,15 +1406,21 @@ class CartTab extends StatelessWidget {
     );
   }
 
-  Widget _qtyBtn(VoidCallback onTap, IconData icon) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Icon(icon, size: 18),
-      ),
-    );
-  }
+  // Widget _qtyBtn(VoidCallback onTap, IconData icon) {
+  //   return GestureDetector(
+  //     onTap: onTap,
+  //     child: Container(
+  //       width: 34,
+  //       height: 34,
+  //       alignment: Alignment.center,
+  //       decoration: BoxDecoration(
+  //         color: const Color(0x207C6EFA),
+  //         borderRadius: BorderRadius.circular(9),
+  //       ),
+  //       child: Icon(icon, size: 15, color: const Color(0xFF7C6EFA)),
+  //     ),
+  //   );
+  // }
 
   /// 💰 CHECKOUT SECTION
   Widget _checkoutSection(

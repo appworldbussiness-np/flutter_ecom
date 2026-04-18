@@ -1,12 +1,54 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ecom_/features/admin/screens/admin_login_screen.dart';
 import 'package:ecom_/features/admin/screens/admin_orders_screen.dart';
+import 'package:ecom_/features/admin/screens/admin_product_screen.dart';
 import 'package:ecom_/features/admin/screens/admin_profile_screen.dart';
-import 'package:ecom_/features/admin/screens/admin_settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ecom_/providers/admin_product_provider.dart';
 import 'package:ecom_/features/admin/widgets/admin_product_form.dart';
+
+// ─── Design Tokens ─────────────────────────────────────────────────────────
+class _T {
+  // Backgrounds
+  static const bg = Color(0xFF080C14);
+  static const surface = Color(0xFF0D1220);
+  static const card = Color(0xFF111827);
+  static const cardHover = Color(0xFF161F30);
+  static const elevated = Color(0xFF1A2235);
+
+  // Brand
+  static const accent = Color(0xFF7C6EFA);
+  static const accentLight = Color(0xFF9D92FB);
+  static const accentDim = Color(0x207C6EFA);
+  static const accentBorder = Color(0x407C6EFA);
+
+  // Status
+  static const success = Color(0xFF10D991);
+  static const successDim = Color(0x1510D991);
+  static const danger = Color(0xFFFF5B5B);
+  static const dangerDim = Color(0x15FF5B5B);
+  static const warning = Color(0xFFF5A623);
+  static const warningDim = Color(0x15F5A623);
+  static const info = Color(0xFF38B6FF);
+  static const infoDim = Color(0x1538B6FF);
+
+  // Neutrals
+  static const white = Color(0xFFFFFFFF);
+  static const text = Color(0xFFE2E8F0);
+  static const textMuted = Color(0xFF7A8BA5);
+  static const textFaint = Color(0xFF3D4D63);
+  static const border = Color(0xFF1E2D42);
+  static const borderBright = Color(0xFF2A3D56);
+}
+
+// ─── Gradient helper ────────────────────────────────────────────────────────
+LinearGradient _accentGrad([AlignmentGeometry begin = Alignment.topLeft]) =>
+    LinearGradient(
+      begin: begin,
+      end: Alignment.bottomRight,
+      colors: [_T.accent, Color(0xFF5B8DEF)],
+    );
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -15,21 +57,23 @@ class AdminDashboard extends StatefulWidget {
   State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
+class _AdminDashboardState extends State<AdminDashboard>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   int _selectedNav = 0;
-
-  static const Color _bg = Color(0xFF0B0F1A);
-  static const Color _surface = Color(0xFF0F1524);
-  static const Color _card = Color(0xFF141B2D);
-  static const Color _accent = Color(0xFF6C5CE7);
-  static const Color _white = Colors.white;
-  static const Color _white54 = Colors.white54;
-  static const Color _white12 = Colors.white12;
+  late AnimationController _fadeCtrl;
+  late Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
+    _fadeCtrl = AnimationController(
+      duration: const Duration(milliseconds: 320),
+      vsync: this,
+    );
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _fadeCtrl.forward();
+
     Future.microtask(() {
       context.read<AdminProductProvider>().listenProducts();
     });
@@ -38,12 +82,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void dispose() {
     _searchController.dispose();
+    _fadeCtrl.dispose();
     super.dispose();
   }
 
-  // ── Fixed breakpoints ─────────────────────────────────────────────────────
   double get _width => MediaQuery.of(context).size.width;
-  bool get _isMobile => _width < 650; // ← was 350, now correct
+  bool get _isMobile => _width < 650;
   bool get _isTablet => _width >= 650 && _width < 1100;
   bool get _isDesktop => _width >= 1100;
 
@@ -59,10 +103,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
         .toList();
   }
 
+  void _switchNav(int index) {
+    setState(() => _selectedNav = index);
+    _fadeCtrl.forward(from: 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: _T.bg,
       drawer: _isMobile ? _buildSidebar() : null,
       body: SafeArea(
         child: Row(
@@ -76,14 +125,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     child: Consumer<AdminProductProvider>(
                       builder: (context, provider, _) {
                         if (provider.isLoading) {
-                          return const Center(
-                            child: CircularProgressIndicator(color: _accent),
-                          );
+                          return Center(child: _PulseLoader());
                         }
                         if (provider.error != null) {
                           return _buildError(provider);
                         }
-                        return _buildBody(provider);
+                        return FadeTransition(
+                          opacity: _fadeAnim,
+                          child: _buildBody(provider),
+                        );
                       },
                     ),
                   ),
@@ -96,118 +146,162 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SIDEBAR
-  // ────────────────────────────────────────────────────────────────────────
-
+  // ── SIDEBAR ────────────────────────────────────────────────────────────────
   Widget _buildSidebar() {
     final items = [
-      {'icon': Icons.dashboard_rounded, 'label': 'Dashboard'},
-      {'icon': Icons.outbox_rounded, 'label': 'Orders'},
-      {'icon': Icons.person_outline, 'label': 'Profile'},
-      {'icon': Icons.settings_outlined, 'label': 'Settings'},
+      {'icon': Icons.grid_view_rounded, 'label': 'Dashboard'},
+      {'icon': Icons.person_rounded, 'label': 'Profile & More'},
+      {'icon': Icons.receipt_long_rounded, 'label': 'Orders'},
+      {'icon': Icons.production_quantity_limits, 'label': 'Products'},
     ];
 
-    final sidebarWidth = _isMobile ? 220.0 : (_isDesktop ? 220.0 : 68.0);
-    final showLabel = _isMobile || _isDesktop;
+    final double w = _isMobile ? 240.0 : (_isDesktop ? 220.0 : 64.0);
+    final bool showLabel = _isMobile || _isDesktop;
 
     return Container(
-      width: sidebarWidth,
-      color: _surface,
+      width: w,
+      decoration: BoxDecoration(
+        color: _T.surface,
+        border: Border(right: BorderSide(color: _T.border)),
+      ),
       child: Column(
         children: [
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
           // Logo
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: EdgeInsets.symmetric(horizontal: showLabel ? 18 : 12),
             child: Row(
+              mainAxisAlignment: showLabel
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: _accent,
+                    gradient: _accentGrad(),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
                     Icons.storefront_rounded,
-                    color: _white,
-                    size: 18,
+                    color: _T.white,
+                    size: 19,
                   ),
                 ),
                 if (showLabel) ...[
                   const SizedBox(width: 10),
-                  const Flexible(
-                    child: Text(
-                      'ECOM ADMIN',
-                      style: TextStyle(
-                        color: _white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'ECOM',
+                        style: TextStyle(
+                          color: _T.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                        ),
                       ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                      Text(
+                        'ADMIN',
+                        style: TextStyle(
+                          color: _T.textMuted,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],
             ),
           ),
 
-          const SizedBox(height: 28),
+          const SizedBox(height: 32),
 
-          // Nav Items
+          // Label
+          if (showLabel)
+            Padding(
+              padding: const EdgeInsets.only(left: 18, bottom: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'NAVIGATION',
+                  style: TextStyle(
+                    color: _T.textFaint,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ),
+            ),
+
+          // Nav items
           ...items.asMap().entries.map((entry) {
-            final index = entry.key;
+            final i = entry.key;
             final item = entry.value;
-            final isSelected = _selectedNav == index;
+            final selected = _selectedNav == i;
 
-            return GestureDetector(
-              onTap: () {
-                setState(() => _selectedNav = index);
-                if (_isMobile) Navigator.pop(context);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                padding: EdgeInsets.symmetric(
-                  horizontal: showLabel ? 12 : 0,
-                  vertical: 11,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? _accent.withOpacity(0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  border: isSelected
-                      ? Border.all(color: _accent.withOpacity(0.3))
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: showLabel
-                      ? MainAxisAlignment.start
-                      : MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      item['icon'] as IconData,
-                      color: isSelected ? _accent : _white54,
-                      size: 20,
-                    ),
-                    if (showLabel) ...[
-                      const SizedBox(width: 10),
-                      Text(
-                        item['label'] as String,
-                        style: TextStyle(
-                          color: isSelected ? _accent : _white54,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                          fontSize: 14,
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              child: InkWell(
+                onTap: () {
+                  _switchNav(i);
+                  if (_isMobile) Navigator.pop(context);
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: showLabel ? 12 : 0,
+                    vertical: 11,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected ? _T.accentDim : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: selected
+                        ? Border.all(color: _T.accentBorder, width: 0.5)
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: showLabel
+                        ? MainAxisAlignment.start
+                        : MainAxisAlignment.center,
+                    children: [
+                      // Icon with gradient when selected
+                      if (selected)
+                        ShaderMask(
+                          shaderCallback: (b) => _accentGrad().createShader(b),
+                          child: Icon(
+                            item['icon'] as IconData,
+                            color: _T.white,
+                            size: 19,
+                          ),
+                        )
+                      else
+                        Icon(
+                          item['icon'] as IconData,
+                          color: _T.textMuted,
+                          size: 19,
                         ),
-                      ),
+                      if (showLabel) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          item['label'] as String,
+                          style: TextStyle(
+                            color: selected ? _T.accentLight : _T.textMuted,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             );
@@ -215,168 +309,141 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
           const Spacer(),
 
-          // 🔴 Logout Button
-          GestureDetector(
-            onTap: _handleLogout,
-            child: Container(
-              margin: const EdgeInsets.all(8),
-              padding: EdgeInsets.symmetric(
-                horizontal: showLabel ? 12 : 0,
-                vertical: 11,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisAlignment: showLabel
-                    ? MainAxisAlignment.start
-                    : MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.logout_rounded, color: Colors.red, size: 20),
-                  if (showLabel) ...[
-                    const SizedBox(width: 10),
-                    const Text(
-                      'Logout',
-                      style: TextStyle(color: Colors.red, fontSize: 14),
-                    ),
+          // Divider
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Divider(color: _T.border, height: 1),
+          ),
+          const SizedBox(height: 8),
+
+          // Logout
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: InkWell(
+              onTap: _handleLogout,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: showLabel ? 12 : 0,
+                  vertical: 11,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: showLabel
+                      ? MainAxisAlignment.start
+                      : MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.logout_rounded, color: _T.danger, size: 19),
+                    if (showLabel) ...[
+                      const SizedBox(width: 10),
+                      Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: _T.danger,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
-
           const SizedBox(height: 16),
         ],
       ),
     );
-  } // ─────────────────────────────────────────────────────────────────────────
+  }
 
   void _handleLogout() {
-    // Example logic (adjust based on your auth system)
-
-    // Clear session / token if needed
-
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => const AdminLoginScreen(), // or LoginScreen
+      PageRouteBuilder(
+        pageBuilder: (_, a, __) => const AdminLoginScreen(),
+        transitionsBuilder: (_, a, __, child) =>
+            FadeTransition(opacity: a, child: child),
+        transitionDuration: const Duration(milliseconds: 300),
       ),
     );
   }
 
-  // HEADER
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── HEADER ─────────────────────────────────────────────────────────────────
   Widget _buildHeader() {
+    final navLabels = [
+      'Dashboard',
+      'Orders',
+      'Profile',
+      'Products',
+      'Settings',
+    ];
+
+    final bool showActions = _selectedNav == 0 || _selectedNav == 1;
+    // 0 = Dashboard, 1 = Orders
+
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: _isMobile ? 8 : 16,
-        vertical: 12,
+      height: 60,
+      padding: EdgeInsets.symmetric(horizontal: _isMobile ? 10 : 20),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
       ),
-      color: _surface,
       child: Row(
         children: [
-          // Hamburger — mobile only
           if (_isMobile)
             Builder(
               builder: (ctx) => IconButton(
-                icon: const Icon(Icons.menu_rounded, color: _white, size: 22),
+                icon: Icon(Icons.menu_rounded, color: cs.onSurface),
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
-                padding: const EdgeInsets.all(6),
-                constraints: const BoxConstraints(),
               ),
             ),
 
-          if (_isMobile) const SizedBox(width: 4),
+          if (_isMobile) const SizedBox(width: 8),
 
-          // Title — hide on very small screens to save space
+          /// Title
           if (_width > 360)
             Text(
-              _isMobile ? 'Dashboard' : 'Admin Dashboard',
+              navLabels[_selectedNav],
               style: TextStyle(
-                color: _white,
-                fontSize: _isMobile ? 15 : 17,
+                color: cs.onSurface,
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
             ),
 
           const Spacer(),
 
-          // Search bar — flexible width
-          Flexible(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: _isMobile ? 150 : (_isTablet ? 220 : 300),
-                minWidth: 100,
-              ),
-              child: Container(
-                height: 38,
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _white12),
+          /// 👇 ONLY SHOW ON DASHBOARD / ORDERS
+          if (showActions) ...[
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: _isMobile ? 150 : (_isTablet ? 220 : 280),
                 ),
-                child: TextField(
+                child: _GlassSearchField(
                   controller: _searchController,
                   onChanged: (_) => setState(() {}),
-                  style: const TextStyle(color: _white, fontSize: 12),
-                  cursorColor: _accent,
-                  decoration: const InputDecoration(
-                    hintText: 'Search...',
-                    hintStyle: TextStyle(color: _white54, fontSize: 12),
-                    prefixIcon: Icon(Icons.search, color: _white54, size: 16),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: true,
-                    fillColor: _card,
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 10),
-                  ),
                 ),
               ),
             ),
-          ),
+            const SizedBox(width: 10),
 
-          const SizedBox(width: 8),
-
-          // Add button
-          _isMobile
-              ? GestureDetector(
-                  onTap: _openAddForm,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _accent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.add_rounded,
-                      color: _white,
-                      size: 18,
-                    ),
+            _isMobile
+                ? _GradientIconButton(
+                    icon: Icons.add_rounded,
+                    onTap: _openAddForm,
+                  )
+                : _GradientButton(
+                    label: 'Add Product',
+                    icon: Icons.add_rounded,
+                    onTap: _openAddForm,
                   ),
-                )
-              : ElevatedButton.icon(
-                  onPressed: _openAddForm,
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text(
-                    'Add Product',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _accent,
-                    foregroundColor: _white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
+          ],
         ],
       ),
     );
@@ -389,27 +456,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // BODY
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── BODY ───────────────────────────────────────────────────────────────────
   Widget _buildBody(AdminProductProvider provider) {
     final products = _filtered(provider);
 
     switch (_selectedNav) {
-      // 🟣 DASHBOARD
       case 0:
         return _dashboardLayout(provider, products);
-
       case 1:
-        return AdminOrdersScreen();
-
-      // 👤 PROFILE
+        return AdminProfileScreen();
       case 2:
-        return const AdminProfileScreen();
-
-      // ⚙️ SETTINGS
+        return AdminOrdersScreen();
       case 3:
-        return const AdminSettingsScreen();
+        return const AdminProductScreen();
 
       default:
         return _dashboardLayout(provider, products);
@@ -417,10 +476,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _dashboardLayout(AdminProductProvider provider, List products) {
-    // Mobile — single column
     if (_isMobile) {
       return SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -428,16 +486,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
             const SizedBox(height: 16),
             _buildMonthlySales(),
             const SizedBox(height: 16),
+            _buildDailySales(),
+            const SizedBox(height: 16),
             _buildProductList(products),
             const SizedBox(height: 16),
-
             _buildInventoryPanel(provider, scrollable: true),
           ],
         ),
       );
     }
 
-    // Tablet — two column
     if (_isTablet) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -445,13 +503,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(18),
               child: Column(
                 children: [
                   _buildAnalytics(provider),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   _buildMonthlySales(),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
+                  _buildDailySales(),
+                  const SizedBox(height: 18),
                   _buildProductList(products),
                 ],
               ),
@@ -462,38 +522,35 @@ class _AdminDashboardState extends State<AdminDashboard> {
       );
     }
 
-    // Desktop — wide layout
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           flex: 4,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(26),
             child: Column(
               children: [
                 _buildAnalytics(provider),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
                 _buildMonthlySales(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
+                _buildDailySales(),
+                const SizedBox(height: 22),
                 _buildProductList(products),
-                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
-        SizedBox(width: 280, child: _buildInventoryPanel(provider)),
+        SizedBox(width: 290, child: _buildInventoryPanel(provider)),
       ],
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ANALYTICS
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── ANALYTICS ──────────────────────────────────────────────────────────────
   Widget _buildAnalytics(AdminProductProvider provider) {
     int totalStock = 0;
     int outOfStock = 0;
-
     for (var p in provider.products) {
       totalStock += p.stock;
       if (p.stock == 0) outOfStock++;
@@ -509,89 +566,88 @@ class _AdminDashboardState extends State<AdminDashboard> {
         int paidOrders = 0;
 
         if (snapshot.hasData) {
-          final orders = snapshot.data!.docs;
-
-          for (var doc in orders) {
+          for (var doc in snapshot.data!.docs) {
             final data = doc.data() as Map<String, dynamic>;
-
             final total = (data['total'] ?? 0).toDouble();
             final method = (data['paymentMethod'] ?? 'cod').toString();
             final isPaid = data['isPaid'] ?? false;
-
             totalOrders++;
             totalRevenue += total;
-
-            if (method == 'esewa') {
+            if (method == 'esewa')
               esewaRevenue += total;
-            } else {
+            else
               codRevenue += total;
-            }
-
             if (isPaid) paidOrders++;
           }
         }
 
         final cards = [
-          {
-            'title': 'Products',
-            'value': provider.products.length.toString(),
-            'icon': Icons.inventory_2_outlined,
-            'color': _accent,
-          },
-          {
-            'title': 'Total Stock',
-            'value': totalStock.toString(),
-            'icon': Icons.warehouse_outlined,
-            'color': const Color(0xFF00B894),
-          },
-          {
-            'title': 'Out of Stock',
-            'value': outOfStock.toString(),
-            'icon': Icons.remove_shopping_cart_outlined,
-            'color': Colors.red,
-          },
-
-          // 🔥 NEW ANALYTICS
-          {
-            'title': 'Orders',
-            'value': totalOrders.toString(),
-            'icon': Icons.receipt_long,
-            'color': Colors.blue,
-          },
-          {
-            'title': 'Revenue',
-            'value': 'NPR ${totalRevenue.toStringAsFixed(0)}',
-            'icon': Icons.attach_money,
-            'color': Colors.green,
-          },
-          {
-            'title': 'eSewa',
-            'value': 'NPR ${esewaRevenue.toStringAsFixed(0)}',
-            'icon': Icons.account_balance_wallet,
-            'color': Colors.greenAccent,
-          },
-          {
-            'title': 'COD',
-            'value': 'NPR ${codRevenue.toStringAsFixed(0)}',
-            'icon': Icons.money,
-            'color': Colors.orange,
-          },
-          {
-            'title': 'Paid Orders',
-            'value': paidOrders.toString(),
-            'icon': Icons.verified,
-            'color': Colors.teal,
-          },
+          _AnalyticsData(
+            'Products',
+            provider.products.length.toString(),
+            Icons.inventory_2_outlined,
+            _T.accent,
+            _T.accentDim,
+          ),
+          _AnalyticsData(
+            'Total Stock',
+            totalStock.toString(),
+            Icons.warehouse_outlined,
+            _T.success,
+            _T.successDim,
+          ),
+          _AnalyticsData(
+            'Out of Stock',
+            outOfStock.toString(),
+            Icons.remove_shopping_cart_outlined,
+            _T.danger,
+            _T.dangerDim,
+          ),
+          _AnalyticsData(
+            'Orders',
+            totalOrders.toString(),
+            Icons.receipt_long_rounded,
+            _T.info,
+            _T.infoDim,
+          ),
+          _AnalyticsData(
+            'Revenue',
+            'NPR ${totalRevenue.toStringAsFixed(0)}',
+            Icons.attach_money_rounded,
+            _T.success,
+            _T.successDim,
+          ),
+          _AnalyticsData(
+            'eSewa',
+            'NPR ${esewaRevenue.toStringAsFixed(0)}',
+            Icons.account_balance_wallet_rounded,
+            _T.accent,
+            _T.accentDim,
+          ),
+          _AnalyticsData(
+            'COD',
+            'NPR ${codRevenue.toStringAsFixed(0)}',
+            Icons.payments_rounded,
+            _T.warning,
+            _T.warningDim,
+          ),
+          _AnalyticsData(
+            'Paid Orders',
+            paidOrders.toString(),
+            Icons.verified_rounded,
+            _T.success,
+            _T.successDim,
+          ),
         ];
 
         if (_isMobile) {
           return SizedBox(
-            height: 90,
+            height: 88,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: cards.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) => _analyticsCard(cards[i], width: 160),
+              itemBuilder: (_, i) => _analyticsCard(cards[i], width: 155),
             ),
           );
         }
@@ -599,13 +655,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
         return LayoutBuilder(
           builder: (context, constraints) {
             final count = constraints.maxWidth < 600 ? 2 : 4;
-            final w = (constraints.maxWidth - (12 * (count - 1))) / count;
-
+            final w = (constraints.maxWidth - (12.0 * (count - 1))) / count;
             return Wrap(
               spacing: 12,
               runSpacing: 12,
               children: cards
-                  .map((c) => _analyticsCard(c, width: w.clamp(140.0, 260.0)))
+                  .map((c) => _analyticsCard(c, width: w.clamp(130.0, 270.0)))
                   .toList(),
             );
           },
@@ -614,62 +669,60 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _analyticsCard(Map card, {required double width}) {
-    return SizedBox(
+  Widget _analyticsCard(_AnalyticsData d, {required double width}) {
+    return Container(
       width: width,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _white12),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: (card['color'] as Color).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(
-                card['icon'] as IconData,
-                color: card['color'] as Color,
-                size: 18,
-              ),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _T.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _T.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: d.dimColor,
+              borderRadius: BorderRadius.circular(10),
             ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    card['title'] as String,
-                    style: const TextStyle(color: _white54, fontSize: 11),
-                    overflow: TextOverflow.ellipsis,
+            child: Icon(d.icon, color: d.color, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  d.title,
+                  style: TextStyle(
+                    color: _T.textMuted,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w500,
                   ),
-                  Text(
-                    card['value'] as String,
-                    style: const TextStyle(
-                      color: _white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  d.value,
+                  style: TextStyle(
+                    color: _T.text,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
                   ),
-                ],
-              ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // PRODUCT LIST
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── PRODUCT LIST ───────────────────────────────────────────────────────────
   Widget _buildProductList(List products) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -680,38 +733,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
             const Text(
               'Products',
               style: TextStyle(
-                color: _white,
+                color: _T.text,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            Text(
-              '${products.length} items',
-              style: const TextStyle(color: _white54, fontSize: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: _T.accentDim,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _T.accentBorder, width: 0.5),
+              ),
+              child: Text(
+                '${products.length} items',
+                style: TextStyle(
+                  color: _T.accentLight,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
 
         if (products.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: _card,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Column(
-              children: [
-                Icon(Icons.inbox_outlined, color: _white54, size: 36),
-                SizedBox(height: 10),
-                Text(
-                  'No products found',
-                  style: TextStyle(color: _white54, fontSize: 13),
-                ),
-              ],
-            ),
-          )
+          _EmptyState(icon: Icons.inbox_outlined, message: 'No products found')
         else
           ListView.builder(
             shrinkWrap: true,
@@ -720,127 +768,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
             itemBuilder: (_, i) {
               final p = products[i];
               final imageUrl = p.images.isNotEmpty ? p.images[0] : '';
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _white12),
+              return _ProductTile(
+                product: p,
+                imageUrl: imageUrl,
+                onEdit: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AdminProductForm(product: p),
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    // Thumbnail
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 46,
-                        height: 46,
-                        child: imageUrl.isNotEmpty
-                            ? Image.network(
-                                imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: _white12,
-                                  child: const Icon(
-                                    Icons.image_outlined,
-                                    color: _white54,
-                                    size: 18,
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                color: _white12,
-                                child: const Icon(
-                                  Icons.image_outlined,
-                                  color: _white54,
-                                  size: 18,
-                                ),
-                              ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 10),
-
-                    // Info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            p.name,
-                            style: const TextStyle(
-                              color: _white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Wrap(
-                            spacing: 5,
-                            runSpacing: 4,
-                            children: [
-                              _pill(
-                                p.category,
-                                _accent.withOpacity(0.2),
-                                _accent,
-                              ),
-                              _pill(
-                                'x${p.stock}',
-                                p.stock > 0
-                                    ? Colors.green.withOpacity(0.15)
-                                    : Colors.red.withOpacity(0.15),
-                                p.stock > 0 ? Colors.green : Colors.red,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(width: 8),
-
-                    // Price + actions
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'NPR ${p.price.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            color: _accent,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _actionBtn(
-                              icon: Icons.edit_outlined,
-                              color: _accent,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AdminProductForm(product: p),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            _actionBtn(
-                              icon: Icons.delete_outline_rounded,
-                              color: Colors.red,
-                              onTap: () => _confirmDelete(p.id, p.name),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                onDelete: () => _confirmDelete(p.id, p.name),
               );
             },
           ),
@@ -848,9 +785,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // INVENTORY PANEL
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── INVENTORY PANEL ────────────────────────────────────────────────────────
   Widget _buildInventoryPanel(
     AdminProductProvider provider, {
     bool scrollable = false,
@@ -859,25 +794,34 @@ class _AdminDashboardState extends State<AdminDashboard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: scrollable ? MainAxisSize.min : MainAxisSize.max,
       children: [
-        const Text(
-          'Inventory',
-          style: TextStyle(
-            color: _white,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Row(
+            children: const [
+              Icon(Icons.layers_rounded, size: 15, color: _T.accent),
+              SizedBox(width: 7),
+              Text(
+                'Inventory',
+                style: TextStyle(
+                  color: _T.text,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-
         if (provider.products.isEmpty)
-          const Center(
+          Center(
             child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No products yet', style: TextStyle(color: _white54)),
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'No products yet',
+                style: TextStyle(color: _T.textMuted, fontSize: 13),
+              ),
             ),
           )
         else if (scrollable)
-          // Mobile: shrinkwrap inside scroll
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -885,7 +829,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
             itemBuilder: (_, i) => _inventoryItem(provider.products[i]),
           )
         else
-          // Tablet/Desktop: Expanded scrollable
           Expanded(
             child: ListView.builder(
               itemCount: provider.products.length,
@@ -896,87 +839,103 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
 
     return Container(
-      color: _surface,
-      padding: const EdgeInsets.all(14),
-      child: scrollable ? content : content,
+      decoration: BoxDecoration(
+        color: _T.surface,
+        border: Border(left: BorderSide(color: _T.border)),
+      ),
+      child: content,
     );
   }
 
   Widget _inventoryItem(dynamic p) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _white12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  p.name,
-                  style: const TextStyle(
-                    color: _white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
+    final inStock = (p.stock as int) > 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: _T.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _T.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    p.name,
+                    style: TextStyle(
+                      color: _T.text,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                'x${p.stock}',
-                style: TextStyle(
-                  color: p.stock > 0 ? Colors.green : Colors.red,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: inStock ? _T.successDim : _T.dangerDim,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'x${p.stock}',
+                    style: TextStyle(
+                      color: inStock ? _T.success : _T.danger,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          if (p.sizes.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: p.sizes
-                  .map<Widget>(
-                    (s) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _accent.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        s,
-                        style: const TextStyle(
-                          color: _accent,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
+              ],
+            ),
+            if ((p.sizes as List).isNotEmpty) ...[
+              const SizedBox(height: 7),
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: (p.sizes as List)
+                    .map<Widget>(
+                      (s) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _T.elevated,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: _T.borderBright,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          s,
+                          style: TextStyle(
+                            color: _T.textMuted,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  )
-                  .toList(),
-            ),
+                    )
+                    .toList(),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  //monthly sales placeholder
-  // ─────────────────────────────────────────────────────────────────────────
-
+  // ── MONTHLY SALES ──────────────────────────────────────────────────────────
   Widget _buildMonthlySales() {
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
@@ -991,19 +950,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator(color: _accent)),
+          return const SizedBox(
+            height: 60,
+            child: Center(child: _PulseLoader()),
           );
         }
 
         final orders = snapshot.data!.docs;
-
         double totalRevenue = 0;
         double esewaRevenue = 0;
         double codRevenue = 0;
         int totalUnits = 0;
-        int totalOrders = orders.length;
         Map<String, int> categoryUnits = {};
 
         for (var doc in orders) {
@@ -1013,115 +970,135 @@ class _AdminDashboardState extends State<AdminDashboard> {
           final items = List<Map<String, dynamic>>.from(data['items'] ?? []);
 
           totalRevenue += total;
-
-          if (method == 'esewa') {
+          if (method == 'esewa')
             esewaRevenue += total;
-          } else {
+          else
             codRevenue += total;
-          }
 
           for (var item in items) {
             final qty = (item['quantity'] ?? 1) as int;
             final category = (item['category'] ?? 'other').toString();
-
             totalUnits += qty;
             categoryUnits[category] = (categoryUnits[category] ?? 0) + qty;
           }
         }
 
-        final avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
+        final avgOrder = orders.isNotEmpty ? totalRevenue / orders.length : 0;
         final sortedCats = categoryUnits.entries.toList()
           ..sort((a, b) => b.value.compareTo(a.value));
 
         return Container(
-          margin: const EdgeInsets.only(top: 16),
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: _surface,
-            border: Border(top: BorderSide(color: _white12)),
+            color: _T.card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _T.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /// HEADER
-              Row(
-                children: [
-                  const Icon(Icons.insights, color: _accent, size: 18),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Monthly Sales — ${_monthName(now.month)} ${now.year}',
-                    style: const TextStyle(
-                      color: _white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              /// 🔥 HORIZONTAL CARDS
-              SizedBox(
-                height: 90,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Row(
                   children: [
-                    _cardWrapper(
-                      _salesCard(
-                        'Revenue',
-                        'NPR ${totalRevenue.toStringAsFixed(0)}',
-                        '${totalOrders} orders',
-                        icon: Icons.attach_money,
-                        color: Colors.green,
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: _accentGrad(),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: const Icon(
+                        Icons.insights_rounded,
+                        color: _T.white,
+                        size: 16,
                       ),
                     ),
-                    _cardWrapper(
-                      _salesCard(
-                        'Units Sold',
-                        totalUnits.toString(),
-                        'items dispatched',
-                        icon: Icons.inventory_2_outlined,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    _cardWrapper(
-                      _salesCard(
-                        'Avg. Order',
-                        'NPR ${avgOrder.toStringAsFixed(0)}',
-                        'per order',
-                        icon: Icons.bar_chart,
-                        color: Colors.orange,
-                      ),
-                    ),
-                    _cardWrapper(
-                      _salesCard(
-                        'eSewa',
-                        'NPR ${esewaRevenue.toStringAsFixed(0)}',
-                        'COD: NPR ${codRevenue.toStringAsFixed(0)}',
-                        icon: Icons.account_balance_wallet,
-                        color: Colors.purple,
-                      ),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Monthly Sales',
+                          style: TextStyle(
+                            color: _T.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          '${_monthName(now.month)} ${now.year}',
+                          style: TextStyle(color: _T.textMuted, fontSize: 11),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
 
-              /// CATEGORY BREAKDOWN
-              if (sortedCats.isNotEmpty) ...[
-                const Text(
-                  'Top categories',
-                  style: TextStyle(color: _white54, fontSize: 12),
+              // Sales cards horizontal scroll
+              SizedBox(
+                height: 88,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  children: [
+                    _salesCard(
+                      'Revenue',
+                      'NPR ${totalRevenue.toStringAsFixed(0)}',
+                      '${orders.length} orders',
+                      icon: Icons.trending_up_rounded,
+                      color: _T.success,
+                      dimColor: _T.successDim,
+                    ),
+                    _salesCard(
+                      'Units Sold',
+                      totalUnits.toString(),
+                      'items dispatched',
+                      icon: Icons.inventory_2_rounded,
+                      color: _T.info,
+                      dimColor: _T.infoDim,
+                    ),
+                    _salesCard(
+                      'Avg. Order',
+                      'NPR ${avgOrder.toStringAsFixed(0)}',
+                      'per order',
+                      icon: Icons.bar_chart_rounded,
+                      color: _T.warning,
+                      dimColor: _T.warningDim,
+                    ),
+                    _salesCard(
+                      'eSewa',
+                      'NPR ${esewaRevenue.toStringAsFixed(0)}',
+                      'COD: NPR ${codRevenue.toStringAsFixed(0)}',
+                      icon: Icons.account_balance_wallet_rounded,
+                      color: _T.accent,
+                      dimColor: _T.accentDim,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
+              ),
+
+              // Category breakdown
+              if (sortedCats.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text(
+                    'Top Categories',
+                    style: TextStyle(
+                      color: _T.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
                 ...sortedCats.take(5).map((entry) {
                   final pct = totalUnits > 0 ? entry.value / totalUnits : 0.0;
-
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1130,43 +1107,45 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           children: [
                             Text(
                               entry.key,
-                              style: const TextStyle(
-                                color: _white54,
+                              style: TextStyle(
+                                color: _T.textMuted,
                                 fontSize: 11,
                               ),
                             ),
                             Text(
                               '${entry.value} units',
-                              style: const TextStyle(
-                                color: _white54,
+                              style: TextStyle(
+                                color: _T.textMuted,
                                 fontSize: 11,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(6),
                           child: LinearProgressIndicator(
                             value: pct,
-                            minHeight: 6,
-                            backgroundColor: _white12,
-                            valueColor: const AlwaysStoppedAnimation(_accent),
+                            minHeight: 5,
+                            backgroundColor: _T.border,
+                            valueColor: AlwaysStoppedAnimation(_T.accent),
                           ),
                         ),
                       ],
                     ),
                   );
                 }),
+                const SizedBox(height: 16),
               ],
 
               if (orders.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
+                Padding(
+                  padding: const EdgeInsets.all(20),
                   child: Center(
                     child: Text(
                       'No orders this month',
-                      style: TextStyle(color: _white54, fontSize: 12),
+                      style: TextStyle(color: _T.textMuted, fontSize: 12),
                     ),
                   ),
                 ),
@@ -1177,91 +1156,70 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _cardWrapper(Widget child) {
-    return Container(
-      width: 180,
-      margin: const EdgeInsets.only(right: 10),
-      child: child,
-    );
-  }
-
   Widget _salesCard(
     String label,
     String value,
     String sub, {
-    IconData icon = Icons.bar_chart,
-    Color color = Colors.blue,
+    required IconData icon,
+    required Color color,
+    required Color dimColor,
   }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isSmall = constraints.maxWidth < 140;
-
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _white12),
+    return Container(
+      width: 170,
+      margin: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _T.elevated,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _T.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: dimColor,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: color, size: 17),
           ),
-          child: Row(
-            children: [
-              /// ICON
-              Container(
-                width: isSmall ? 32 : 40,
-                height: isSmall ? 32 : 40,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(color: _T.textMuted, fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                child: Icon(icon, color: color, size: isSmall ? 16 : 20),
-              ),
-
-              const SizedBox(width: 10),
-
-              /// TEXT
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: _white54,
-                        fontSize: isSmall ? 9 : 11,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      style: TextStyle(
-                        color: _white,
-                        fontSize: isSmall ? 13 : 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      sub,
-                      style: TextStyle(
-                        color: _white54,
-                        fontSize: isSmall ? 8 : 10,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: _T.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                Text(
+                  sub,
+                  style: TextStyle(color: _T.textFaint, fontSize: 9.5),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
   String _monthName(int month) {
-    const names = [
+    const n = [
       'Jan',
       'Feb',
       'Mar',
@@ -1275,90 +1233,589 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'Nov',
       'Dec',
     ];
-    return names[month - 1];
+    return n[month - 1];
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CONFIRM DELETE
-  // ─────────────────────────────────────────────────────────────────────────
-  void _confirmDelete(String productId, String productName) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+  //daily
+
+  Widget _buildDailySales() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where(
+            'createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+          )
+          .where('createdAt', isLessThan: Timestamp.fromDate(endOfDay))
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox(
+            height: 60,
+            child: Center(child: _PulseLoader()),
+          );
+        }
+
+        final orders = snapshot.data!.docs;
+        double totalRevenue = 0;
+        double esewaRevenue = 0;
+        double codRevenue = 0;
+        int totalUnits = 0;
+        int pendingOrders = 0;
+        int completedOrders = 0;
+        Map<String, int> categoryUnits = {};
+        Map<int, double> hourlyRevenue = {};
+
+        for (var doc in orders) {
+          final data = doc.data() as Map<String, dynamic>;
+          final total = (data['total'] ?? 0).toDouble();
+          final method = (data['paymentMethod'] ?? 'cod').toString();
+          final status = (data['status'] ?? '').toString();
+          final items = List<Map<String, dynamic>>.from(data['items'] ?? []);
+          final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+
+          totalRevenue += total;
+          if (method == 'esewa')
+            esewaRevenue += total;
+          else
+            codRevenue += total;
+
+          if (status == 'pending') pendingOrders++;
+          if (status == 'completed' || status == 'delivered') completedOrders++;
+
+          if (createdAt != null) {
+            final hour = createdAt.hour;
+            hourlyRevenue[hour] = (hourlyRevenue[hour] ?? 0) + total;
+          }
+
+          for (var item in items) {
+            final qty = (item['quantity'] ?? 1) as int;
+            final category = (item['category'] ?? 'other').toString();
+            totalUnits += qty;
+            categoryUnits[category] = (categoryUnits[category] ?? 0) + qty;
+          }
+        }
+
+        final avgOrder = orders.isNotEmpty ? totalRevenue / orders.length : 0.0;
+        final sortedCats = categoryUnits.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+
+        // Peak hour
+        int? peakHour;
+        double peakVal = 0;
+        hourlyRevenue.forEach((h, v) {
+          if (v > peakVal) {
+            peakVal = v;
+            peakHour = h;
+          }
+        });
+        final peakLabel = peakHour != null
+            ? '${peakHour.toString().padLeft(2, '0')}:00–${(peakHour! + 1).toString().padLeft(2, '0')}:00'
+            : '—';
+
+        // Hourly sparkline (0–23 bucketed into 8 segments of 3h)
+        final sparkData = List.generate(8, (i) {
+          double sum = 0;
+          for (int h = i * 3; h < i * 3 + 3; h++) {
+            sum += hourlyRevenue[h] ?? 0;
+          }
+          return sum;
+        });
+        final sparkMax = sparkData.fold(0.0, (a, b) => b > a ? b : a);
+
+        return Container(
+          decoration: BoxDecoration(
+            color: _T.card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _T.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: _accentGrad(),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: const Icon(
+                        Icons.today_rounded,
+                        color: _T.white,
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Daily Sales',
+                            style: TextStyle(
+                              color: _T.text,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            '${now.day} ${_monthName(now.month)} ${now.year}',
+                            style: TextStyle(color: _T.textMuted, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Live badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _T.successDim,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: _T.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Live',
+                            style: TextStyle(
+                              color: _T.success,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // ── Sales cards horizontal scroll ───────────────────────────
+              SizedBox(
+                height: 88,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  children: [
+                    _salesCard(
+                      'Revenue',
+                      'NPR ${totalRevenue.toStringAsFixed(0)}',
+                      '${orders.length} orders today',
+                      icon: Icons.trending_up_rounded,
+                      color: _T.success,
+                      dimColor: _T.successDim,
+                    ),
+                    _salesCard(
+                      'Units Sold',
+                      totalUnits.toString(),
+                      'items dispatched',
+                      icon: Icons.inventory_2_rounded,
+                      color: _T.info,
+                      dimColor: _T.infoDim,
+                    ),
+                    _salesCard(
+                      'Avg. Order',
+                      'NPR ${avgOrder.toStringAsFixed(0)}',
+                      'per order',
+                      icon: Icons.bar_chart_rounded,
+                      color: _T.warning,
+                      dimColor: _T.warningDim,
+                    ),
+                    _salesCard(
+                      'eSewa',
+                      'NPR ${esewaRevenue.toStringAsFixed(0)}',
+                      'COD: NPR ${codRevenue.toStringAsFixed(0)}',
+                      icon: Icons.account_balance_wallet_rounded,
+                      color: _T.accent,
+                      dimColor: _T.accentDim,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Order status row ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Row(
+                  children: [
+                    _statusChip(
+                      Icons.hourglass_top_rounded,
+                      'Pending',
+                      pendingOrders.toString(),
+                      _T.warning,
+                      _T.warningDim,
+                    ),
+                    const SizedBox(width: 8),
+                    _statusChip(
+                      Icons.check_circle_rounded,
+                      'Completed',
+                      completedOrders.toString(),
+                      _T.success,
+                      _T.successDim,
+                    ),
+                    const SizedBox(width: 8),
+                    _statusChip(
+                      Icons.schedule_rounded,
+                      'Peak Hour',
+                      peakLabel,
+                      _T.accent,
+                      _T.accentDim,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Hourly sparkline ────────────────────────────────────────
+              if (sparkMax > 0) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Revenue by Hour',
+                        style: TextStyle(
+                          color: _T.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      Text(
+                        '3h buckets',
+                        style: TextStyle(color: _T.textFaint, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: SizedBox(
+                    height: 44,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: List.generate(sparkData.length, (i) {
+                        final pct = sparkMax > 0
+                            ? sparkData[i] / sparkMax
+                            : 0.0;
+                        final labels = [
+                          '12a',
+                          '3a',
+                          '6a',
+                          '9a',
+                          '12p',
+                          '3p',
+                          '6p',
+                          '9p',
+                        ];
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 500,
+                                      ),
+                                      curve: Curves.easeOut,
+                                      width: double.infinity,
+                                      height: pct > 0
+                                          ? (pct * 32).clamp(3.0, 32.0)
+                                          : 3.0,
+                                      decoration: BoxDecoration(
+                                        color: pct > 0.7
+                                            ? _T.accent
+                                            : _T.accentDim,
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  labels[i],
+                                  style: TextStyle(
+                                    color: _T.textFaint,
+                                    fontSize: 8,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+              ],
+
+              // ── Top categories ──────────────────────────────────────────
+              if (sortedCats.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text(
+                    'Top Categories',
+                    style: TextStyle(
+                      color: _T.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                ...sortedCats.take(5).map((entry) {
+                  final pct = totalUnits > 0 ? entry.value / totalUnits : 0.0;
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              entry.key,
+                              style: TextStyle(
+                                color: _T.textMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                            Text(
+                              '${entry.value} units',
+                              style: TextStyle(
+                                color: _T.textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: pct,
+                            minHeight: 5,
+                            backgroundColor: _T.border,
+                            valueColor: AlwaysStoppedAnimation(_T.accent),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                const SizedBox(height: 16),
+              ],
+
+              if (orders.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Center(
+                    child: Text(
+                      'No orders today',
+                      style: TextStyle(color: _T.textMuted, fontSize: 12),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Compact status chip used in the daily widget.
+  Widget _statusChip(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+    Color dimColor,
+  ) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: dimColor,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Delete Product',
-              style: TextStyle(color: _white, fontSize: 15),
+            Icon(icon, color: color, size: 13),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    label,
+                    style: TextStyle(color: _T.textFaint, fontSize: 9),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
-        content: RichText(
-          text: TextSpan(
-            style: const TextStyle(color: _white54, fontSize: 13, height: 1.5),
-            children: [
-              const TextSpan(text: 'Delete '),
-              TextSpan(
-                text: '"$productName"',
-                style: const TextStyle(
-                  color: _white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const TextSpan(text: '? This cannot be undone.'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: _white54)),
-          ),
-          ElevatedButton.icon(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final provider = context.read<AdminProductProvider>();
-              final success = await provider.deleteProduct(productId);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success
-                          ? '$productName deleted'
-                          : provider.error ?? 'Delete failed',
-                    ),
-                    backgroundColor: success ? Colors.green : Colors.red,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              }
-            },
-            icon: const Icon(Icons.delete_outline_rounded, size: 15),
-            label: const Text('Delete'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: _white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ERROR
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── CONFIRM DELETE ─────────────────────────────────────────────────────────
+  void _confirmDelete(String productId, String productName) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (ctx) => Dialog(
+        backgroundColor: _T.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _T.dangerDim,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: _T.danger,
+                      size: 19,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Delete Product',
+                    style: TextStyle(
+                      color: _T.text,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              RichText(
+                text: TextSpan(
+                  style: TextStyle(
+                    color: _T.textMuted,
+                    fontSize: 13,
+                    height: 1.6,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Are you sure you want to delete '),
+                    TextSpan(
+                      text: '"$productName"',
+                      style: const TextStyle(
+                        color: _T.text,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const TextSpan(text: '? This action cannot be undone.'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(color: _T.textMuted, fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      final provider = context.read<AdminProductProvider>();
+                      final success = await provider.deleteProduct(productId);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? '$productName deleted'
+                                  : provider.error ?? 'Delete failed',
+                            ),
+                            backgroundColor: success ? _T.success : _T.danger,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.delete_outline_rounded, size: 15),
+                    label: const Text('Delete'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _T.danger,
+                      foregroundColor: _T.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── ERROR ──────────────────────────────────────────────────────────────────
   Widget _buildError(AdminProductProvider provider) {
     return Center(
       child: Padding(
@@ -1366,18 +1823,177 @@ class _AdminDashboardState extends State<AdminDashboard> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: 12),
-            Text(
-              provider.error ?? 'Something went wrong',
-              style: const TextStyle(color: _white54),
-              textAlign: TextAlign.center,
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: _T.dangerDim,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: _T.danger,
+                size: 30,
+              ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => provider.listenProducts(),
-              style: ElevatedButton.styleFrom(backgroundColor: _accent),
-              child: const Text('Retry'),
+            Text(
+              provider.error ?? 'Something went wrong',
+              style: TextStyle(color: _T.textMuted, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            _GradientButton(
+              label: 'Try Again',
+              icon: Icons.refresh_rounded,
+              onTap: provider.listenProducts,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Data Model ─────────────────────────────────────────────────────────────
+class _AnalyticsData {
+  final String title, value;
+  final IconData icon;
+  final Color color, dimColor;
+  const _AnalyticsData(
+    this.title,
+    this.value,
+    this.icon,
+    this.color,
+    this.dimColor,
+  );
+}
+
+// ─── Product Tile ────────────────────────────────────────────────────────────
+class _ProductTile extends StatefulWidget {
+  final dynamic product;
+  final String imageUrl;
+  final VoidCallback onEdit, onDelete;
+
+  const _ProductTile({
+    required this.product,
+    required this.imageUrl,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  State<_ProductTile> createState() => _ProductTileState();
+}
+
+class _ProductTileState extends State<_ProductTile> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.product;
+    final inStock = (p.stock as int) > 0;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _hovered ? _T.cardHover : _T.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _hovered ? _T.borderBright : _T.border,
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 50,
+                height: 50,
+                child: widget.imageUrl.isNotEmpty
+                    ? Image.network(
+                        widget.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _imagePlaceholder(),
+                      )
+                    : _imagePlaceholder(),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.name,
+                    style: const TextStyle(
+                      color: _T.text,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _Chip(p.category, _T.accentDim, _T.accentLight),
+                      const SizedBox(width: 5),
+                      _Chip(
+                        'x${p.stock}',
+                        inStock ? _T.successDim : _T.dangerDim,
+                        inStock ? _T.success : _T.danger,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 10),
+
+            // Price + actions
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'NPR ${p.price.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: _T.accent,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _IconAction(
+                      icon: Icons.edit_outlined,
+                      color: _T.accent,
+                      bgColor: _T.accentDim,
+                      onTap: widget.onEdit,
+                    ),
+                    const SizedBox(width: 6),
+                    _IconAction(
+                      icon: Icons.delete_outline_rounded,
+                      color: _T.danger,
+                      bgColor: _T.dangerDim,
+                      onTap: widget.onDelete,
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
@@ -1385,41 +2001,239 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
-  Widget _pill(String label, Color bg, Color textColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+  Widget _imagePlaceholder() => Container(
+    color: _T.elevated,
+    child: const Icon(Icons.image_outlined, color: _T.textFaint, size: 20),
+  );
+}
+
+// ─── Reusable Widgets ────────────────────────────────────────────────────────
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color bg, textColor;
+  const _Chip(this.label, this.bg, this.textColor);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(5),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: textColor,
+        fontSize: 9.5,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+}
+
+class _IconAction extends StatelessWidget {
+  final IconData icon;
+  final Color color, bgColor;
+  final VoidCallback onTap;
+  const _IconAction({
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(7),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(4),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
+      child: Icon(icon, color: color, size: 13),
+    ),
+  );
+}
+
+class _GlassSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  const _GlassSearchField({required this.controller, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 36,
+    decoration: BoxDecoration(
+      color: _T.card,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _T.border),
+    ),
+    child: TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: const TextStyle(color: _T.text, fontSize: 12.5),
+      cursorColor: _T.accent,
+      decoration: const InputDecoration(
+        hintText: 'Search products...',
+        hintStyle: TextStyle(color: _T.textMuted, fontSize: 12),
+        prefixIcon: Icon(Icons.search_rounded, color: _T.textMuted, size: 16),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(vertical: 10),
+      ),
+    ),
+  );
+}
+
+class _GradientButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _GradientButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [_T.accent, Color(0xFF5B8DEF)]),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: _T.accent.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: _T.white, size: 15),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: _T.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _GradientIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _GradientIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [_T.accent, const Color(0xFF5B8DEF)]),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, color: _T.white, size: 18),
+    ),
+  );
+}
+
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  const _EmptyState({required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(36),
+    decoration: BoxDecoration(
+      color: _T.card,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: _T.border),
+    ),
+    child: Column(
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: _T.elevated,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: _T.textFaint, size: 24),
         ),
-      ),
-    );
+        const SizedBox(height: 12),
+        Text(message, style: TextStyle(color: _T.textMuted, fontSize: 13)),
+      ],
+    ),
+  );
+}
+
+class _PulseLoader extends StatefulWidget {
+  const _PulseLoader();
+
+  @override
+  State<_PulseLoader> createState() => _PulseLoaderState();
+}
+
+class _PulseLoaderState extends State<_PulseLoader>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
 
-  Widget _actionBtn({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(6),
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) => Opacity(
+        opacity: 0.4 + 0.6 * _anim.value,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_T.accent, const Color(0xFF5B8DEF)],
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(
+            Icons.storefront_rounded,
+            color: _T.white,
+            size: 20,
+          ),
         ),
-        child: Icon(icon, color: color, size: 13),
       ),
     );
   }
